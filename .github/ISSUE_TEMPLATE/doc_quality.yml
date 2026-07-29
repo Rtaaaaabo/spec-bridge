@@ -1,0 +1,54 @@
+name: 生成ドキュメントの品質
+description: 生成された仕様ドキュメントの内容がおかしい場合
+labels: ["doc-quality"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        プロンプトとスキーマの改善に使わせてもらいます。
+        **機密情報は伏せて投稿してください。**
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 種類
+      options:
+        - 事実と異なる記述が生成された（ハルシネーション）
+        - 出典が間違っている / 存在しないファイルを指している
+        - 書かれるべき仕様が抜けている
+        - 既存の記述が消えた
+        - CX サポートデスクの回答がおかしい
+        - その他
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 本来どうあるべきでしたか
+      description: 実装上の正しい仕様を書いてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: generated
+    attributes:
+      label: 生成された内容
+      description: 該当箇所を貼ってください。伏せ字で構いません。
+      render: markdown
+    validations:
+      required: true
+
+  - type: input
+    id: stack
+    attributes:
+      label: 解析対象の言語・フレームワーク
+      placeholder: 例) Ruby on Rails 7 / Go + gRPC / Next.js App Router
+    validations:
+      required: true
+
+  - type: input
+    id: pr-size
+    attributes:
+      label: PR の規模
+      placeholder: 例) 17ファイル変更、うち差分が大きいのは3ファイル

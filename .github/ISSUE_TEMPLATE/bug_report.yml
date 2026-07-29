@@ -1,0 +1,61 @@
+name: バグ報告
+description: 意図しない挙動を報告する
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。
+        **機密情報（社内の仕様・ソースパス・トークン）は伏せて投稿してください。**
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: どこで起きましたか
+      options:
+        - CLI（PR の解析）
+        - CX サポートデスク画面
+        - 生成されたドキュメントの内容
+        - その他
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 何が起きましたか
+      description: 期待した挙動と、実際の挙動を書いてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 再現手順
+      description: 実行したコマンドを含めてください。
+      placeholder: |
+        1. pnpm analyze --pr ... --repo ... --docs ...
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: 出力
+      description: |
+        CLI の出力、または生成されたドキュメントの該当箇所を貼ってください。
+        機密が含まれる場合は伏せて構いません。
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境
+      placeholder: |
+        - OS:
+        - Node: (node -v)
+        - 解析対象の言語/フレームワーク:
+        - ANTHROPIC_API_KEY を設定しているか / Claude Code のログインか:
+    validations:
+      required: true
