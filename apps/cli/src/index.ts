@@ -114,8 +114,16 @@ async function main(): Promise<number> {
 
   console.log("── 結果 ──");
   for (const doc of result.updated) {
+    const b = doc.breakdown;
     console.log(`✓ ${doc.id}  確度 ${doc.confidence.toFixed(2)}`);
     console.log(`  ${doc.path}`);
+    console.log(
+      `  内訳: 出典の実在 ${b.sourceValidity.toFixed(2)} / ` +
+        `変更ファイル読了 ${b.readCoverage.toFixed(2)} / ` +
+        `出典の密度 ${b.citationDensity.toFixed(2)} / ` +
+        `確定度 ${b.determinacy.toFixed(2)}` +
+        `（モデル自己申告 ${b.selfReported.toFixed(2)}）`,
+    );
     for (const w of doc.warnings) console.log(`  ⚠ ${w.detail}`);
     if (doc.openQuestions.length > 0) {
       console.log(`  ? 開発者への確認事項 ${doc.openQuestions.length} 件:`);

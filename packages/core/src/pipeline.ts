@@ -1,5 +1,6 @@
 import { analyzeFeature } from "./analyze.ts";
 import { classifyPullRequest, type ClassifyResult } from "./classify.ts";
+import type { ConfidenceBreakdown } from "./confidence.ts";
 import { mergeAnalysis, type MergeWarning } from "./merge.ts";
 import { DocStore } from "./store.ts";
 import type { PullRequestInput } from "./types.ts";
@@ -20,7 +21,8 @@ export interface RunResult {
     id: string;
     path: string;
     confidence: number;
-    warnings: MergeWarning[];
+    breakdown: ConfidenceBreakdown;
+    warnings: Array<MergeWarning | { kind: "invalid-source"; detail: string }>;
     openQuestions: string[];
   }>;
   failures: Array<{ id: string; error: string }>;
@@ -67,7 +69,7 @@ export async function runPipeline(
     log(`▸ 「${target.title}」(${id}) を解析中…`);
     try {
       const existing = target.docId ? await store.get(target.docId) : null;
-      const analysis = await analyzeFeature(
+      const result = await analyzeFeature(
         pr,
         existing,
         { id, title: target.title, why: target.why },
@@ -80,7 +82,7 @@ export async function runPipeline(
 
       const { doc, warnings } = mergeAnalysis(
         existing,
-        analysis,
+        result.output,
         pr,
         id,
         classification.issueKeys,
@@ -92,7 +94,14 @@ export async function runPipeline(
         id,
         path,
         confidence: doc.meta.confidence,
-        warnings,
+        breakdown: result.confidence,
+        warnings: [
+          ...warnings,
+          ...result.warnings.map((detail) => ({
+            kind: "invalid-source" as const,
+            detail,
+          })),
+        ],
         openQuestions: doc.body.openQuestions,
       });
     } catch (error) {

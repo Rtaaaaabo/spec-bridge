@@ -1,5 +1,6 @@
 export * from "./types.ts";
 export * from "./agent.ts";
+export * from "./confidence.ts";
 export * from "./markdown.ts";
 export * from "./store.ts";
 export * from "./classify.ts";

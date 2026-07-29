@@ -11,6 +11,14 @@ export interface RunAgentOptions {
   disallowedTools?: string[];
   maxTurns?: number;
   onProgress?: (line: string) => void;
+  /** ツール呼び出しを構造化して観測する。どのファイルを実際に読んだかの計測に使う */
+  onToolUse?: (name: string, input: Record<string, unknown>) => void;
+}
+
+export interface AgentRun {
+  text: string;
+  /** エージェントが Read / Grep / Glob で触ったファイルパス */
+  filesRead: string[];
 }
 
 /**
@@ -38,6 +46,12 @@ export const READ_ONLY_DENY_LIST = [
  * Messages API を直接叩かないので、API クレジットがなくても動く。
  */
 export async function runAgent(options: RunAgentOptions): Promise<string> {
+  return (await runAgentDetailed(options)).text;
+}
+
+/** `runAgent` に加えて、エージェントが実際に読んだファイルを返す */
+export async function runAgentDetailed(options: RunAgentOptions): Promise<AgentRun> {
+  const filesRead = new Set<string>();
   const stream = query({
     prompt: options.prompt,
     options: {
@@ -58,10 +72,20 @@ export async function runAgent(options: RunAgentOptions): Promise<string> {
   for await (const message of stream) {
     const m = message as { type: string; [k: string]: unknown };
 
-    if (m.type === "assistant" && options.onProgress) {
+    if (m.type === "assistant") {
       const content = (m.message as { content?: unknown[] } | undefined)?.content ?? [];
-      for (const block of content as Array<{ type: string; name?: string }>) {
-        if (block.type === "tool_use" && block.name) options.onProgress(`  ↳ ${block.name}`);
+      for (const block of content as Array<{
+        type: string;
+        name?: string;
+        input?: Record<string, unknown>;
+      }>) {
+        if (block.type !== "tool_use" || !block.name) continue;
+        options.onProgress?.(`  ↳ ${block.name}`);
+        options.onToolUse?.(block.name, block.input ?? {});
+
+        // どのファイルを読んだかを記録する（確度の算出に使う）
+        const path = block.input?.["file_path"] ?? block.input?.["path"];
+        if (typeof path === "string") filesRead.add(path);
       }
     }
 
@@ -76,7 +100,7 @@ export async function runAgent(options: RunAgentOptions): Promise<string> {
   if (resultText === null) {
     throw new Error("エージェントが result メッセージを返しませんでした");
   }
-  return resultText;
+  return { text: resultText, filesRead: [...filesRead] };
 }
 
 /** エージェントの最終テキストから JSON を取り出す */

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { extractJson, runAgent, READ_ONLY_DENY_LIST } from "./agent.ts";
+import { extractJson, runAgent, runAgentDetailed, READ_ONLY_DENY_LIST } from "./agent.ts";
+import { computeConfidence, pruneInvalidSources, type ConfidenceBreakdown } from "./confidence.ts";
 import { FeatureDocBody, type FeatureDoc, type PullRequestInput } from "./types.ts";
 
 export const AnalyzeOutput = z.object({
@@ -10,6 +11,14 @@ export const AnalyzeOutput = z.object({
   body: FeatureDocBody,
 });
 export type AnalyzeOutput = z.infer<typeof AnalyzeOutput>;
+
+export interface AnalyzeResult {
+  output: AnalyzeOutput;
+  /** 機械的に算出した確度の内訳 */
+  confidence: ConfidenceBreakdown;
+  /** 実在しない出典を落とした件数など */
+  warnings: string[];
+}
 
 const SYSTEM = `あなたは開発チームのソースコードを読み、CS チームと QA チームが使う「機能仕様ドキュメント」を保守するエージェントです。
 
@@ -119,7 +128,7 @@ export async function analyzeFeature(
   existing: FeatureDoc | null,
   target: { id: string; title: string; why: string },
   options: AnalyzeOptions,
-): Promise<AnalyzeOutput> {
+): Promise<AnalyzeResult> {
   const tools = ["Read", "Grep", "Glob"];
   if (options.allowBash) tools.push("Bash");
 
@@ -131,7 +140,7 @@ export async function analyzeFeature(
 
   const model = options.model ?? process.env.SPEC_BRIDGE_ANALYZE_MODEL;
 
-  const resultText = await runAgent({
+  const run = await runAgentDetailed({
     systemPrompt: SYSTEM,
     prompt: buildPrompt(pr, existing, target),
     cwd: options.repoPath,
@@ -141,9 +150,10 @@ export async function analyzeFeature(
     maxTurns: options.maxTurns ?? 60,
     onProgress: options.onProgress,
   });
+  const resultText = run.text;
 
   const first = tryParse(resultText);
-  if (first.ok) return first.value;
+  if (first.ok) return finalize(first.value, pr, options, run.filesRead);
 
   // 調査には多くのツール呼び出しを費やしている。形式が違うだけで捨てるのは損なので、
   // 内容を保ったまま構造だけ直させる往復を1回だけ挟む。
@@ -174,7 +184,7 @@ export async function analyzeFeature(
   });
 
   const second = tryParse(repaired);
-  if (second.ok) return second.value;
+  if (second.ok) return finalize(second.value, pr, options, run.filesRead);
 
   const dumpPath = await dumpFailure(target.id, resultText, repaired);
   throw new Error(
@@ -182,6 +192,45 @@ export async function analyzeFeature(
       `エージェントの生出力: ${dumpPath}\n\n` +
       truncateErrors(second.errors),
   );
+}
+
+/**
+ * 解析結果を確定させる。
+ *
+ * ここで (1) 実在しない出典を除去し (2) 確度を機械的に算出し直す。
+ * モデルの自己申告する confidence は当てにならないので採用しない。
+ */
+function finalize(
+  output: AnalyzeOutput,
+  pr: PullRequestInput,
+  options: AnalyzeOptions,
+  filesRead: string[],
+): AnalyzeResult {
+  const warnings: string[] = [];
+
+  const pruned = pruneInvalidSources(output.body, options.repoPath);
+  if (pruned.droppedSources > 0) {
+    warnings.push(
+      `実在しないファイルを指す出典 ${pruned.droppedSources} 件を除去しました。`,
+    );
+  }
+  for (const text of pruned.droppedRules) {
+    warnings.push(`出典がすべて無効だったため除外: "${text.slice(0, 80)}"`);
+  }
+
+  const confidence = computeConfidence({
+    body: pruned.body,
+    repoPath: options.repoPath,
+    changedFiles: pr.changedFiles.map((f) => f.filename),
+    filesRead,
+    selfReported: output.confidence,
+  });
+
+  return {
+    output: { ...output, body: pruned.body, confidence: confidence.score },
+    confidence,
+    warnings,
+  };
 }
 
 type ParseAttempt =
