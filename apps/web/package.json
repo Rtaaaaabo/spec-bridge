@@ -1,0 +1,22 @@
+{
+  "name": "@spec-bridge/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3737",
+    "build": "next build",
+    "start": "next start --port 3737"
+  },
+  "dependencies": {
+    "@spec-bridge/core": "workspace:*",
+    "next": "^16.2.12",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "tailwindcss": "^4.3.3"
+  }
+}

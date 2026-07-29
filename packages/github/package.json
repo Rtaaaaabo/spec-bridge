@@ -1,0 +1,15 @@
+{
+  "name": "@spec-bridge/github",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@spec-bridge/core": "workspace:*",
+    "octokit": "^5.0.5"
+  }
+}

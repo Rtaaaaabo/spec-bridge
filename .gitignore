@@ -1,0 +1,26 @@
+# 依存関係
+node_modules/
+
+# ビルド出力
+dist/
+out/
+build/
+.next/
+.turbo/
+
+# TypeScript / ツールのキャッシュ
+*.tsbuildinfo
+.eslintcache
+
+# 環境変数（.env.bak などのバックアップも含めて除外する）
+.env
+.env.*
+!.env.example
+
+# デプロイ
+.vercel/
+
+# その他
+*.log
+.DS_Store
+tmp/

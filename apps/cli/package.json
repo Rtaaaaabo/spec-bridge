@@ -1,0 +1,19 @@
+{
+  "name": "@spec-bridge/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "spec-bridge": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@spec-bridge/core": "workspace:*",
+    "@spec-bridge/github": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.1"
+  }
+}
