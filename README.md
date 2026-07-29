@@ -89,8 +89,8 @@ Two results are worth calling out:
 - Languages other than TypeScript and Go
 - Repositories where a single feature genuinely spans multiple repositories (the issue-key linking path has
   only been exercised with synthetic data)
-- `confidence` scores cluster in the 0.75–0.80 range across every run so far, so the value does not yet
-  usefully distinguish a well-understood change from a shaky one
+- The GitHub App path (webhook → docs repo PR) has been smoke-tested but not yet run against a real
+  installation end to end
 
 ## Quick start
 
@@ -178,6 +178,27 @@ Markdown is brittle, so subsequent updates read that instead.
 Markdown rendering is **deterministic** — identical input always produces identical bytes — so diffs in the
 docs repository stay reviewable.
 
+## Automating with a GitHub App
+
+Instead of running the CLI by hand, run a webhook server that reacts to merged pull requests and
+**opens a pull request against your docs repository**.
+
+```bash
+pnpm webhook
+```
+
+```
+merged PR → webhook → verify signature → shallow clone → classify → analyze
+          → open PR against the docs repo → delete the clone
+```
+
+Source code only ever lands in a temporary directory and is deleted after the run. The pull request
+against the docs repository *is* the review gate: generated content is `status: draft` until a human
+merges it.
+
+Setup (creating the GitHub App, permissions, tunneling to localhost) is documented in
+[docs/github-app-setup.md](docs/github-app-setup.md).
+
 ## Multiple repositories
 
 When backend and frontend live in separate repositories, **one feature spans several pull requests.**
@@ -247,9 +268,12 @@ packages/core/          the analysis pipeline
   store.ts              reads/writes the docs directory and its index page
   pipeline.ts           wires the above together
   ask.ts                support Q&A: verdict, customer reply, citations
-packages/github/        pull request retrieval via Octokit
+  confidence.ts         source verification and machine-derived confidence
+  pr-body.ts            builds the docs-repo pull request description
+packages/github/        PR retrieval, docs-repo PRs, webhook verification, shallow checkout
 apps/cli/               command line interface
 apps/web/               support desk UI (Next.js)
+apps/webhook/           GitHub App webhook receiver (Hono)
 ```
 
 ## Development
@@ -286,7 +310,8 @@ project maintains.
   180,000 characters overall.
 - If someone hand-edits the generated Markdown and breaks the `spec-bridge:data` block, that file is skipped
   (with a warning).
-- `confidence` is self-reported by the model and has not been meaningfully discriminative in testing.
+- The webhook server processes requests in-process with no queue or retry. High PR volume will back up.
+- GitHub App installation tokens are not implemented; API calls use a personal access token.
 - Reports from stacks other than TypeScript and Go are very welcome — please use the
   "generated document quality" issue template.
 

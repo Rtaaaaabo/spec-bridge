@@ -83,8 +83,8 @@ CS が読みたい「決済機能の仕様」にはなりません。
 
 - TypeScript と Go 以外の言語
 - 1つの機能が本当に複数リポジトリにまたがるケース（課題キーによる束ねは合成データでしか動かしていない）
-- `confidence` が全実行で 0.75〜0.80 に収束しており、
-  「よく読めた」と「怪しい」の区別がついていない
+- GitHub App 経由の経路（webhook → docs リポジトリへ PR）は
+  疎通確認までで、実インストールでの通しはまだ
 
 ## セットアップ
 
@@ -172,6 +172,26 @@ Markdown 本文を再パースするのは壊れやすいので、次回の更�
 Markdown の生成は**決定論的**です（同じ入力からは常に同じバイト列）。
 docs リポジトリの diff がノイズだらけにならず、人間のレビューが機能します。
 
+## GitHub App による自動化
+
+CLI を手で叩く代わりに、マージされた PR に反応して
+**docs リポジトリへ PR を出す** webhook サーバーを動かせます。
+
+```bash
+pnpm webhook
+```
+
+```
+PR マージ → webhook → 署名検証 → 浅くクローン → 分類 → 解析
+         → docs リポジトリへ PR → クローンを破棄
+```
+
+ソースコードは一時ディレクトリにしか置かず、処理後に必ず消します。
+docs リポジトリへの PR が承認フローそのものです。人間がマージするまで生成物は `status: draft` のままです。
+
+GitHub App の作成・権限・ローカルへのトンネリングの手順は
+[docs/github-app-setup.md](docs/github-app-setup.md) にあります。
+
 ## マルチリポジトリ
 
 バックエンドとフロントエンドが別リポジトリのチームでは、**1つの機能が複数の PR にまたがります**。
@@ -240,9 +260,12 @@ packages/core/          解析パイプラインの中核
   store.ts              docs ディレクトリの読み書きとインデックスページ生成
   pipeline.ts           上記をつなぐメイン処理
   ask.ts                CX 向け Q&A。判定・顧客向け文面・出典
-packages/github/        Octokit による PR 取得
+  confidence.ts         出典の実在検証と、確度の機械的な算出
+  pr-body.ts            docs リポジトリへ出す PR 本文の組み立て
+packages/github/        PR 取得、docs リポジトリへの PR、webhook 検証、浅いクローン
 apps/cli/               コマンドラインインターフェース
 apps/web/               サポートデスク画面（Next.js）
+apps/webhook/           GitHub App の webhook 受け口（Hono）
 ```
 
 ## 開発
@@ -276,7 +299,8 @@ pnpm typecheck   # core / cli / web
 - docs リポジトリへの PR 作成は未実装。今はローカルディレクトリに直接書き出す
 - 巨大 PR のフィルタリングが未実装。差分は1ファイル 20,000 文字、全体 180,000 文字で切っているだけ
 - 人間が docs 側の Markdown を手編集して `spec-bridge:data` ブロックを壊すと、そのファイルは読み飛ばされる（警告は出る）
-- `confidence` は LLM の自己申告で、検証では有意な差がついていない
+- webhook サーバーはキューもリトライも持たず、受けたプロセスがそのまま解析する。PR が集中すると詰まる
+- GitHub App のインストールトークン交換が未実装で、API 呼び出しは PAT を使う
 - TypeScript と Go 以外のスタックでの動作報告を歓迎します
   （「生成ドキュメントの品質」Issue テンプレートを使ってください）
 

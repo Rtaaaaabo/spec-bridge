@@ -6,5 +6,6 @@ export * from "./store.ts";
 export * from "./classify.ts";
 export * from "./analyze.ts";
 export * from "./merge.ts";
+export * from "./pr-body.ts";
 export * from "./pipeline.ts";
 export * from "./ask.ts";
