@@ -1,121 +1,90 @@
 # spec-bridge
 
-**マージされた PR から機能仕様ドキュメントを自動生成し、CS チームと QA チームが読める形で保守する。**
+**Turn merged pull requests into feature specs your support and QA teams can actually use — with mandatory source citations.**
 
-生成 AI で実装スピードが上がった結果、CS と QA が仕様を追いきれず、開発への問い合わせが増えている——
-そこを埋めるためのツールです。コード理解ツールは開発者向けのものが多くありますが、これは**受け手が非エンジニア**です。
+日本語版: [README.ja.md](README.ja.md)
 
-- **CS** は顧客からの問い合わせが「仕様かバグか」を、開発に聞かずに判断できる
-- **QA** は何をテストすべきか、この変更でどこが壊れうるかがわかる
-- **根拠を示せないことは答えない。** 出典のない記述はドキュメントに載らず、
-  根拠のない回答はシステム側で「判断できない」に落とされる
+AI has made teams ship faster than their support and QA functions can keep up with. The gap shows up as
+a steady stream of "is this a bug or is it supposed to work that way?" questions aimed at engineers.
 
-## CX サポートデスク
+There are plenty of tools that help *developers* understand a codebase. This one is different:
+**the reader is not an engineer.**
 
-CS が顧客からの問い合わせを貼り付けると、生成された仕様ドキュメントだけを根拠に回答します。
+- **Support** can tell whether a customer report is expected behavior or a real bug, without asking engineering.
+- **QA** learns what to test and what this change might have broken.
+- **It refuses to answer without evidence.** Claims that can't cite a source never make it into the docs,
+  and answers that can't cite a source are forced to "can't determine" by the system — not by the prompt.
 
-![仕様どおりと判定し、顧客にそのまま送れる回答と出典を返している画面](docs/screenshot.png)
+## The support desk
 
-判定・顧客への回答・CS 向けの説明・**出典（`file:line` 付き）**・開発チームへの確認事項が返ります。
-根拠にしたドキュメントが未レビュー（`draft`）なら、その警告も自動で付きます。
+Support pastes in a customer inquiry. The answer is grounded only in the generated feature specs.
 
-### 根拠がないときは答えません
+![Verdict "matches the spec", a customer-ready reply, and three citations with file and line numbers](docs/screenshot.png)
 
-![根拠が0件のため「判断できない」と表示し、顧客向けの文面を出していない画面](docs/screenshot-unknown.png)
+You get a verdict, a reply you can send to the customer as-is, an internal note explaining the reasoning,
+**citations down to `file:line`**, and anything worth confirming with engineering. If the underlying doc is
+still unreviewed (`draft`), that warning is attached automatically.
 
-曖昧な問い合わせや、ドキュメントに記述のない話題では **`判断できない` を返し、顧客向けの文面を生成しません**。
-LLM が根拠なしに断定してきた場合も、システム側で強制的にこの状態へ落とします。
+### No evidence, no answer
 
-CS が AI の回答を信じて顧客に誤答することが、このプロジェクトで最も避けたい事故です。
+![Verdict "can't determine" with zero citations and no customer-facing reply](docs/screenshot-unknown.png)
 
-## 設計上の中心的な判断
+For vague inquiries, or topics the docs simply don't cover, it returns **"can't determine" and generates
+no customer-facing reply at all**. If the model asserts something without citing a source, the system
+overwrites the verdict rather than trusting it.
 
-### 1. PR ごとにドキュメントを作らない
+A support agent relaying a confidently wrong AI answer to a customer is the failure mode this project
+is built to prevent.
 
-PR は「変更」であって「仕様」ではない。`決済のリトライ回数を3→5に変更` という PR の記録を100枚集めても、CS が読みたい「決済機能の仕様」にはならない。
+## Three design decisions
 
-なので **1機能 = 1ドキュメントを永続させ、PR はそのドキュメントへのパッチとして適用する**。副産物として「いつ誰がこの仕様を変えたか」のタイムラインが手に入り、これが「お客様が3/12に体験した挙動」を答えるのに効く。
+### 1. Documents are per-feature, not per-pull-request
 
-### 2. 出典のない記述は書き出さない
+A pull request is a *change*, not a *specification*. A hundred records of "changed payment retry count from 3 to 5"
+still won't tell support how payments work.
 
-CS が AI の回答を信じて顧客に誤答したら、このサービスは社内で二度と使われない。対策はコードレベルで入れてある。
+So **one feature is one durable document, and each PR is applied to it as a patch.** A useful side effect:
+you get a timeline of when each rule changed, which is what you need to answer "the customer saw this on March 12."
 
-- `SpecRule.sources` は zod で `min(1)`。出典ゼロの仕様項目はスキーマ上存在できない
-- `mergeAnalysis()` が出典なしの項目を書き出し前に落とし、警告として報告する
-- 生成された Markdown には出典が脚注（`[^1]`）として必ず付く
-- `status` は `draft`（AI生成）→ `verified`（人間レビュー済）。自動更新が走ったら `verified` は `draft` に戻る
+### 2. Unsourced claims are never written
 
-### 3. わからないと言えること
+- `SpecRule.sources` is `min(1)` in the zod schema — a spec item with zero citations cannot exist.
+- `mergeAnalysis()` drops any unsourced item before writing and reports it as a warning.
+- Generated Markdown carries citations as footnotes (`[^1]`).
+- `status` goes `draft` (AI-generated) → `verified` (human-reviewed). Any automated update knocks
+  `verified` back down to `draft`.
 
-エージェントには「コードから読み取れない仕様を推測で埋めるな、`openQuestions` に書け」と指示してある。CLI はこれを実行結果に出す。ここが埋まらないことが、後のフェーズで「開発者への質問」を自動生成する種になる。
+### 3. Saying "I don't know" is a feature
 
-## 構成
+The agent is instructed not to fill gaps with guesses. Anything it can't determine from the code goes into
+`openQuestions`, which the CLI surfaces in its output. Those gaps are the seed for automatically drafting
+questions to engineering in a later phase.
 
-```
-packages/core/          解析パイプラインの中核
-  types.ts              FeatureDoc のスキーマ（zod）。ここが仕様の型
-  agent.ts              Claude Agent SDK の薄いラッパ。認証の入口はここ1箇所
-  classify.ts           PR が仕様に影響するか / どの機能かの判定（ツールなし・高速）
-  analyze.ts            Claude Agent SDK でリポジトリを探索させ、ドキュメント本文を生成
-  merge.ts              解析結果を既存ドキュメントへマージ。出典なしの除去と変更履歴の積み上げ
-  markdown.ts           FeatureDoc ⇄ Markdown。決定論的なので docs リポジトリの diff が読める
-  store.ts              docs ディレクトリの読み書きとインデックスページ生成
-  pipeline.ts           上記をつなぐメイン処理
-  ask.ts                CX 向け Q&A。仕様/バグ判定と顧客向け文面の生成
-packages/github/        Octokit による PR 取得
-apps/cli/               Phase 0 の検証用 CLI
-apps/web/               CX サポートデスク画面（Next.js）
-```
+## Quick start
 
-## CX サポートデスク画面
-
-```bash
-pnpm --filter @spec-bridge/web dev   # http://localhost:3737
-```
-
-CS が顧客からの問い合わせを貼り付けると、機能仕様ドキュメントだけを根拠に回答します。
-
-| 出力 | 内容 |
-| --- | --- |
-| 判定バッジ | `仕様どおり` / `バグの可能性` / `判断できない` |
-| 顧客への回答 | 敬語・専門用語なしでそのまま送れる文面（コピーボタン付き） |
-| CS 向けの説明 | なぜその判断になったかの内部メモ |
-| 根拠 | ドキュメントからの引用 + ソースファイルのパス |
-| 開発チームへの依頼文 | バグ判定のときだけ。そのまま起票できる粒度 |
-| 確認すべきこと | ドキュメントの「開発者への確認事項」に該当する項目、および draft ステータスの警告 |
-
-### 誤答を防ぐための作り
-
-- **出典ゼロの断定はシステム側で握りつぶす。** LLM が根拠なしに `spec` / `bug` を返してきた場合、
-  `ask.ts` が強制的に `unknown` に書き換え、顧客向け文面を空にする。UI の実装に依存させない。
-- **`unknown` のときは顧客向け文面を作らない。** 「わかりません、開発に確認してください」と言えることが
-  この画面の最重要機能。
-- **ドキュメントのステータスを回答に反映する。** draft（AI生成・未レビュー）を根拠にした回答には
-  その旨が確認事項として付く。
-- **エージェントにツールを一切渡さない。** 与えられたドキュメント以外は読めないので、
-  「コードを勝手に読んで推測した」が構造的に起きない。
-
-## セットアップ
+Requires Node 22+ and pnpm.
 
 ```bash
 pnpm install
-cp .env.example .env   # GITHUB_TOKEN を設定
+cp .env.example .env   # set GITHUB_TOKEN
 ```
 
-必須なのは `GITHUB_TOKEN`（Pull requests: Read-only + Contents: Read-only）だけ。
+The only required value is `GITHUB_TOKEN` (`Pull requests: Read-only` + `Contents: Read-only`).
 
-### 認証について
+### Authentication
 
-分類も解析も Claude Agent SDK 経由で動かしているので、**認証の入口は `agent.ts` の1箇所**にまとまっている。
+Both classification and analysis run through the Claude Agent SDK, so **there is exactly one auth entry
+point** (`packages/core/src/agent.ts`).
 
-| `ANTHROPIC_API_KEY` | 動作 |
+| `ANTHROPIC_API_KEY` | Behavior |
 | --- | --- |
-| 未設定 | Claude Code のログイン情報を使う。**API クレジット不要** |
-| 設定済み | そのキーを使う。API 利用料として課金される |
+| Unset | Uses your Claude Code login. **No API credits required.** |
+| Set | Uses that key. Billed as API usage. |
 
-ローカル検証では未設定でよい。Phase 1 でサーバー上で動かすときは Claude Code のログインが存在しないので、API キーが必須になる。そのタイミングで classify は Messages API + structured outputs に戻すのが素直（スキーマ準拠が保証され、エージェントを起動しない分だけ速い）。
+Leave it unset for local use. When you run this on a server there is no Claude Code login, so the key
+becomes mandatory.
 
-## 使い方
+### Analyze a pull request
 
 ```bash
 pnpm analyze \
@@ -124,27 +93,31 @@ pnpm analyze \
   --docs ~/dev/acme-specs
 ```
 
-`--repo` は解析対象リポジトリのローカルチェックアウト。エージェントがここを Read / Grep / Glob で探索する。`--docs` に機能ドキュメントが `features/<id>.md` として書き出される。
+`--repo` is a local checkout the agent explores with Read / Grep / Glob. Feature docs are written to
+`--docs` as `features/<id>.md`.
 
-### エージェントに渡さないツール
-
-Agent SDK の `allowedTools` は**「自動承認するツール」の指定であって、使えるツールの制限ではない**。`permissionMode: "bypassPermissions"` と併用すると全ツールが素通りする。実際に禁止できるのは `disallowedTools` だけなので、`agent.ts` の `READ_ONLY_DENY_LIST` で明示的に落としている。
-
-| ツール | 理由 |
+| Option | Description |
 | --- | --- |
-| `Write` / `Edit` / `NotebookEdit` | 解析対象リポジトリを書き換えさせない |
-| `WebFetch` / `WebSearch` | 顧客のソースコードを外部に送信させない |
-| `Bash` | 既定で禁止。`--allow-bash` を付けたときだけ許可 |
+| `--force` | Analyze even when classified as spec-irrelevant |
+| `--allow-bash` | Allow the agent to use Bash (e.g. to follow `git log`) |
+| `--quiet` | Suppress progress output |
 
-主なオプション:
+### Run the support desk
 
-| オプション | 説明 |
+```bash
+pnpm web
+```
+
+| Output | Contents |
 | --- | --- |
-| `--force` | 仕様に影響しないと分類されても解析する |
-| `--allow-bash` | エージェントに Bash を許可し、`git log` などを辿れるようにする |
-| `--quiet` | 進捗ログを抑制 |
+| Verdict | `matches spec` / `possible bug` / `can't determine` |
+| Customer reply | Plain, jargon-free wording you can send as-is (with a copy button) |
+| Internal note | Why the verdict was reached |
+| Citations | Quotes from the docs plus source file paths |
+| Engineering request | Only for bug verdicts. Detailed enough to file directly |
+| To confirm | Open questions from the doc, plus a warning if the doc is still `draft` |
 
-## 生成されるドキュメント
+## What gets generated
 
 ```markdown
 ---
@@ -155,100 +128,135 @@ updatedAt: 2026-07-28
 confidence: 0.9
 ---
 
-# 決済リトライ
+# Payment retry
 
-## 概要 / ユーザーから見た振る舞い     ← CS 向け。専門用語なし
-## 画面 / エンドポイント               ← ルーティング定義から抽出
-## 権限・ロール                        ← 問い合わせで最も多い領域
-## 仕様の詳細                          ← 出典必須
-## テスト観点（正常系/異常系/回帰/E2E） ← QA 向け
-## 開発者への確認事項                  ← コードから判断できなかった点
-## 変更履歴
-## 出典                                ← file:line + PR番号
+## Overview / User-visible behavior   ← for support; no jargon
+## Screens / Endpoints                ← extracted from routing definitions
+## Permissions and roles              ← the most common source of inquiries
+## Specification details              ← citations required
+## Test points (happy/error/regression/E2E)  ← for QA
+## Questions for engineering          ← what couldn't be determined from code
+## Change history
+## Sources                            ← file:line + PR number
 ```
 
-ファイル末尾に `<!-- spec-bridge:data ... -->` として機械可読な JSON を併記している。Markdown 本文を再パースするのは壊れやすいので、次回の更新時はこちらを読む。
+A machine-readable JSON block (`<!-- spec-bridge:data ... -->`) is appended to each file. Re-parsing rendered
+Markdown is brittle, so subsequent updates read that instead.
 
-## Phase 0 の検証方法
+Markdown rendering is **deterministic** — identical input always produces identical bytes — so diffs in the
+docs repository stay reviewable.
 
-1. 自分の既存リポジトリの、仕様が変わった PR を1件選んで実行する
-2. 生成された Markdown を **自分が CS 役になったつもりで読む**
-3. 「この仕様について顧客に説明できるか」「バグか仕様か判断できるか」を判定する
+## Multiple repositories
 
-ここが通らなければ以降のフェーズ（Web UI、CS 向けチャット、QA 向け機能）を作っても意味がない。
+When backend and frontend live in separate repositories, **one feature spans several pull requests.**
+Two mechanisms hold that together.
 
-## この先の予定
+### Linking by issue key
 
-| Phase | 内容 |
+Issue keys (`PROJ-123` and similar) are extracted from the branch name, PR title, and body. If an existing
+document carries the same key, the PR is **attached to it instead of creating a new one**.
+
+```
+acme/backend#42  feature/PROJ-42-retry        → creates payment-retry.md
+acme/frontend#88 feature/PROJ-42-retry-badge  → updates the same payment-retry.md ✅
+```
+
+This works even when the titles are unrelated ("Payment retry" vs. "Add retry status badge"). Without a key,
+it falls back to semantic matching on title and summary.
+
+**This depends on your branching conventions** — put the issue key in the branch name or PR body.
+
+### Protecting what couldn't be verified
+
+An agent analyzing a frontend PR can only read the frontend checkout, so it cannot verify backend-derived
+content already in the document.
+
+`mergeAnalysis()` **carries over any record whose sources don't include the current PR's repository,
+regardless of what the model returned.** Instructing the prompt not to delete things isn't enough, so this is
+enforced in the merge layer.
+
+| Record's source | When analyzing a PR in `acme/backend` |
 | --- | --- |
-| 0 (現在) | PR → 機能ドキュメント生成、CLI のみ |
-| 1 | GitHub App webhook 化、docs リポジトリへの PR 自動作成、マルチリポジトリ束ね（Feature ID 軸） |
-| 2 | Web UI、CS 向けチャット（出典必須）、バグ/仕様判定、課題管理ツールへの起票 |
-| 3 | 影響範囲分析、画面遷移図、E2E テストコード生成 |
-| 4 | Playwright によるスクリーンショット自動取得、回答できなかった質問のフィードバックループ |
+| `acme/backend` | Replaced by the analysis (updates land) |
+| `acme/frontend` | **Carried over from the existing doc** and reported as a warning |
 
-## マルチリポジトリ
+### Not yet supported
 
-バックエンドとフロントエンドが別リポジトリのチームでは、**1つの機能が複数の PR にまたがります**。
-その束ね方を2段構えで担保しています。
+The analysis agent reads **one repository at a time** (`analyzeFeature` takes a single `repoPath`).
+Verifying across frontend and backend simultaneously requires handing the agent multiple checkouts.
 
-### 1. 課題キーで束ねる
+## Tools the agent is not given
 
-PR のブランチ名・タイトル・本文から課題管理ツールのキー（`PROJ-123` など）を抽出し、
-**同じキーを持つ既存ドキュメントがあればそこに紐づけます**（新規作成しない）。
+The Agent SDK's `allowedTools` is an **auto-approval list, not a restriction**. Combined with
+`permissionMode: "bypassPermissions"`, every tool passes through. Only `disallowedTools` actually blocks
+anything, so `READ_ONLY_DENY_LIST` in `agent.ts` removes these explicitly:
 
-```
-acme/backend#42  feature/PROJ-42-retry        → payment-retry.md を新規作成
-acme/frontend#88 feature/PROJ-42-retry-badge  → 同じ payment-retry.md を更新 ✅
-```
-
-タイトルが「決済リトライ」と「リトライ状況の表示UIを追加」のように全く違っても、課題キーが一致すれば束ねます。
-キーがない場合はタイトル・要約の意味的な一致にフォールバックします。
-
-**これが効くかどうかはブランチ運用に依存します。** 課題キーをブランチ名か PR 本文に入れる運用を推奨します。
-
-### 2. 検証できなかった記述を守る
-
-フロントの PR を解析するエージェントは、フロントのチェックアウトしか読めません。
-このとき、ドキュメントに入っている**バックエンド由来の記述を検証できない**ため、落とされる危険があります。
-
-`mergeAnalysis()` は **今回の PR のリポジトリを出典に持たない記述を、LLM の出力に関わらず引き継ぎます**。
-プロンプトで「消すな」と指示するだけでは守れないので、マージ層で構造的に担保しています。
-
-| 記述の出典 | 今回 `acme/backend` の PR を解析したとき |
+| Tool | Reason |
 | --- | --- |
-| `acme/backend` | 解析結果で置き換わる（更新が反映される） |
-| `acme/frontend` | **既存から引き継ぐ**（検証できていないため）。警告として報告される |
+| `Write` / `Edit` / `NotebookEdit` | Never modify the repository being analyzed |
+| `WebFetch` / `WebSearch` | Never send source code to an external service |
+| `Bash` | Denied by default; allowed only with `--allow-bash` |
 
-### まだできないこと
+The support desk agent gets **no tools at all**, including read-only ones. It can only see the documents it
+was handed, so "the model went and read the code and guessed" cannot happen structurally.
 
-解析エージェントは**1リポジトリしか読めません**（`analyzeFeature` の `repoPath` は単数）。
-FE と BE を横断して検証するには、複数のチェックアウトをエージェントに渡す必要があります。
-Managed Agents に寄せる場合は `resources` に `github_repository` を複数並べるだけで済みます。
+See [SECURITY.md](SECURITY.md) for the full security model and reporting process.
 
-## 開発
+## Project layout
+
+```
+packages/core/          the analysis pipeline
+  types.ts              FeatureDoc schema (zod) — the contract lives here
+  agent.ts              thin Claude Agent SDK wrapper; the single auth entry point
+  classify.ts           does this PR affect the spec, and which feature? (no tools, fast)
+  analyze.ts            explores the repository and generates document content
+  merge.ts              merges results into the existing doc; drops unsourced items
+  markdown.ts           FeatureDoc ⇄ Markdown, deterministically
+  store.ts              reads/writes the docs directory and its index page
+  pipeline.ts           wires the above together
+  ask.ts                support Q&A: verdict, customer reply, citations
+packages/github/        pull request retrieval via Octokit
+apps/cli/               command line interface
+apps/web/               support desk UI (Next.js)
+```
+
+## Development
 
 ```bash
-pnpm test        # テスト（LLM を呼ばないので高速・無料）
-pnpm typecheck   # 型チェック（core / cli / web）
+pnpm test        # fast and free — no LLM calls
+pnpm typecheck   # core / cli / web
 ```
 
-テストは **LLM の出力に依存しない部分**に置いています — Markdown 生成の決定論性、出典なし記述の除去、
-スキーマの型強制。ここが壊れると誤答が顧客に届くため、回帰の壁として機能させています。
+Tests cover the parts that **don't depend on model output**: deterministic Markdown rendering, removal of
+unsourced claims, and schema coercion. A regression in any of those puts a wrong answer in front of a
+customer, so they act as the safety net.
 
-コントリビュートする場合は [CONTRIBUTING.md](CONTRIBUTING.md) を読んでください。
-このプロジェクトが守っている不変条件（出典必須、「わからない」と言えること、決定論的な生成、
-エージェントへのツール制限）を書いてあります。
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request — it documents the invariants this
+project maintains.
 
-## ライセンス
+## Roadmap
+
+| Phase | Scope |
+| --- | --- |
+| 0 (current) | PR → feature docs, CLI + support desk UI |
+| 1 | GitHub App webhooks, automatic PRs to the docs repository |
+| 2 | Filing to issue trackers, feedback loop from unanswered questions |
+| 3 | Impact analysis, screen flow diagrams, E2E test generation |
+| 4 | Automated screenshots via Playwright |
+
+## Known gaps
+
+- The analysis agent can only read one repository at a time.
+- Duplicate detection only normalizes surrounding whitespace. If the model rephrases a rule, the duplicate
+  survives and is expected to be caught in review of the docs repository PR.
+- Automatic PRs to the docs repository are not implemented; output is written to a local directory.
+- No filtering for very large PRs. Diffs are simply truncated at 20,000 characters per file and
+  180,000 characters overall.
+- If someone hand-edits the generated Markdown and breaks the `spec-bridge:data` block, that file is skipped
+  (with a warning).
+- **Validated against a small number of repositories so far.** Reports from other stacks are very welcome —
+  please use the "generated document quality" issue template.
+
+## License
 
 [Apache License 2.0](LICENSE)
-
-## 未実装の既知の穴
-
-- 解析エージェントは**1リポジトリしか読めない**（後述「マルチリポジトリ」参照）
-- 記述の重複判定は前後の空白・改行までしか吸収しない。LLM が言い換えた場合は重複が残り、
-  docs リポジトリの PR レビューで落とす前提になっている
-- docs リポジトリへの PR 作成は未実装。今はローカルディレクトリに直接書き出す
-- 巨大 PR（変更ファイル多数）のフィルタリングが未実装。差分は1ファイル 20,000 文字、全体 180,000 文字で切っているだけ
-- 人間が docs 側の Markdown を手編集して `spec-bridge:data` ブロックを壊すと、そのファイルは読み飛ばされる（警告は出る）
