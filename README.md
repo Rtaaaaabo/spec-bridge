@@ -60,6 +60,38 @@ The agent is instructed not to fill gaps with guesses. Anything it can't determi
 `openQuestions`, which the CLI surfaces in its output. Those gaps are the seed for automatically drafting
 questions to engineering in a later phase.
 
+## Validation
+
+Run against four repositories in two languages, including three open source projects the author did not write.
+
+| Repository | Pull request | Expected | Result |
+| --- | --- | --- | --- |
+| formbricks (TS, monorepo) | [#8665](https://github.com/formbricks/formbricks/pull/8665) `feat:` project memberships to SpiceDB | skip | ✅ skipped |
+| formbricks | [#8658](https://github.com/formbricks/formbricks/pull/8658) `fix(billing):` trial-to-paid guard | analyze | ✅ 16/16 citations valid |
+| documenso (TS) | [#3095](https://github.com/documenso/documenso/pull/3095) `chore:` dependency upgrade | skip | ✅ skipped |
+| documenso | [#3109](https://github.com/documenso/documenso/pull/3109) `feat:` rework command search | analyze | ✅ 28/28 citations valid |
+| gitea (**Go**) | [#38678](https://github.com/go-gitea/gitea/pull/38678) `fix:` repo home page 500 | analyze | ✅ 35/35 citations valid |
+
+**All 79 citations across the three generated documents were checked mechanically** — every referenced file
+existed in the repository and every line number was within the file. No fabricated sources.
+
+Two results are worth calling out:
+
+- **formbricks #8665 was correctly skipped despite being titled `feat:` and touching 27 files.** Its
+  description states that PostgreSQL remains the source of truth and that the change "preserves current
+  behavior" — it is an internal projection with no user-visible effect. Naive classification would have
+  produced a spurious spec document here.
+- **Switching to Go did not degrade the output structure.** Screens, endpoints, permissions, and test points
+  were all populated, so nothing depends on Next.js-specific conventions.
+
+### Not yet validated
+
+- Languages other than TypeScript and Go
+- Repositories where a single feature genuinely spans multiple repositories (the issue-key linking path has
+  only been exercised with synthetic data)
+- `confidence` scores cluster in the 0.75–0.80 range across every run so far, so the value does not yet
+  usefully distinguish a well-understood change from a shaky one
+
 ## Quick start
 
 Requires Node 22+ and pnpm.
@@ -254,8 +286,9 @@ project maintains.
   180,000 characters overall.
 - If someone hand-edits the generated Markdown and breaks the `spec-bridge:data` block, that file is skipped
   (with a warning).
-- **Validated against a small number of repositories so far.** Reports from other stacks are very welcome —
-  please use the "generated document quality" issue template.
+- `confidence` is self-reported by the model and has not been meaningfully discriminative in testing.
+- Reports from stacks other than TypeScript and Go are very welcome — please use the
+  "generated document quality" issue template.
 
 ## License
 
