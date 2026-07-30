@@ -208,7 +208,7 @@ function finalize(
 ): AnalyzeResult {
   const warnings: string[] = [];
 
-  const pruned = pruneInvalidSources(output.body, options.repoPath);
+  const pruned = pruneInvalidSources(output.body, options.repoPath, pr.repo);
   if (pruned.droppedSources > 0) {
     warnings.push(
       `実在しないファイルを指す出典 ${pruned.droppedSources} 件を除去しました。`,
@@ -221,6 +221,7 @@ function finalize(
   const confidence = computeConfidence({
     body: pruned.body,
     repoPath: options.repoPath,
+    currentRepo: pr.repo,
     changedFiles: pr.changedFiles.map((f) => f.filename),
     filesRead,
     selfReported: output.confidence,

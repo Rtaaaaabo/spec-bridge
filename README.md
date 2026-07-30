@@ -84,11 +84,34 @@ Two results are worth calling out:
 - **Switching to Go did not degrade the output structure.** Screens, endpoints, permissions, and test points
   were all populated, so nothing depends on Next.js-specific conventions.
 
+### Cross-repository validation
+
+Two purpose-built example repositories reproduce the backend/frontend split, so anyone can rerun this:
+
+- [spec-bridge-example-api](https://github.com/Rtaaaaabo/spec-bridge-example-api) — invitation API, roles, seat limits
+- [spec-bridge-example-web](https://github.com/Rtaaaaabo/spec-bridge-example-web) — invitation form, role-gated UI
+
+Both carry a `DEMO-1` issue key. Analyzing the API pull request first, then the web one:
+
+| | After the API PR | After the web PR |
+| --- | --- | --- |
+| Spec items | 10 | **15** (all 10 API-derived items survived, 5 added) |
+| Screens | 0 | 1 |
+| Endpoints | 3 | 4 |
+| Citations | api 23 | **api 29 + web 12** |
+
+The classifier's own reasoning: *"the issue key DEMO-1 matches the existing document `member-invitation`,
+so although this pull request is in a different repository (frontend), link it to the same feature."*
+
+**This run found a real bug.** The first attempt deleted all ten API-derived spec items: source verification
+was checking every citation against the *currently checked-out* repository, so backend file paths looked
+like fabrications from the frontend checkout and were pruned before the merge layer could protect them.
+Unit tests never caught it because they only covered single-repository scenarios. Fixed, with regression
+tests.
+
 ### Not yet validated
 
 - Languages other than TypeScript and Go
-- Repositories where a single feature genuinely spans multiple repositories (the issue-key linking path has
-  only been exercised with synthetic data)
 - The GitHub App path (webhook → docs repo PR) has been smoke-tested but not yet run against a real
   installation end to end
 

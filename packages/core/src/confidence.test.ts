@@ -29,7 +29,7 @@ function body(overrides: Partial<ReturnType<typeof FeatureDocBody.parse>> = {}) 
 
 test("実在するファイル・範囲内の行番号は有効と判定される", () => {
   const repo = fixtureRepo();
-  const check = checkSources(body(), repo);
+  const check = checkSources(body(), repo, "a/b");
   assert.equal(check.total, 1);
   assert.equal(check.valid, 1);
 });
@@ -43,6 +43,7 @@ test("存在しないファイルを指す出典を検出する", () => {
       ],
     }),
     repo,
+    "a/b",
   );
   assert.equal(check.valid, 0);
   assert.deepEqual(check.missingFiles, ["src/nope.ts"]);
@@ -57,6 +58,7 @@ test("行番号がファイル行数を超えていたら無効と判定する",
       ],
     }),
     repo,
+    "a/b",
   );
   assert.equal(check.valid, 0);
   assert.equal(check.outOfRange.length, 1);
@@ -71,6 +73,7 @@ test("リポジトリ外を指す出典は無効（パストラバーサル対�
       ],
     }),
     repo,
+    "a/b",
   );
   assert.equal(check.valid, 0);
   assert.equal(check.missingFiles.length, 1);
@@ -92,7 +95,7 @@ test("実在しない出典は除去され、出典が全部消えた仕様項�
     ],
   });
 
-  const { body: pruned, droppedSources, droppedRules } = pruneInvalidSources(input, repo);
+  const { body: pruned, droppedSources, droppedRules } = pruneInvalidSources(input, repo, "a/b");
 
   assert.equal(droppedSources, 2);
   assert.deepEqual(droppedRules, ["架空のみ"]);
@@ -118,6 +121,7 @@ test("確度はモデルの自己申告ではなく実測から算出される",
       openQuestions: [],
     }),
     repoPath: repo,
+    currentRepo: "a/b",
     changedFiles: ["src/a.ts", "src/b.ts"],
     filesRead: ["src/a.ts", "src/b.ts"],
     selfReported: 0.8,
@@ -131,6 +135,7 @@ test("確度はモデルの自己申告ではなく実測から算出される",
       openQuestions: ["あれもこれも不明", "これも不明", "それも不明"],
     }),
     repoPath: repo,
+    currentRepo: "a/b",
     changedFiles: ["src/a.ts", "src/b.ts"],
     filesRead: [],
     selfReported: 0.8, // 自己申告は同じでも…
@@ -149,6 +154,7 @@ test("絶対パスで読まれたファイルも読了率に数える", () => {
   const result = computeConfidence({
     body: body(),
     repoPath: repo,
+    currentRepo: "a/b",
     changedFiles: ["src/a.ts"],
     filesRead: [join(repo, "src/a.ts")],
     selfReported: 0.5,
@@ -160,6 +166,7 @@ test("未確認事項が多いほど確定度が下がる", () => {
   const repo = fixtureRepo();
   const base = {
     repoPath: repo,
+    currentRepo: "a/b",
     changedFiles: ["src/a.ts"],
     filesRead: ["src/a.ts"],
     selfReported: 0.8,
@@ -171,4 +178,58 @@ test("未確認事項が多いほど確定度が下がる", () => {
   });
   assert.ok(few.determinacy > many.determinacy);
   assert.ok(few.score > many.score);
+});
+
+// --- マルチリポジトリ（実データ検証で発見した退行の固定） ---
+
+test("他リポジトリ由来の出典は、いまのチェックアウトに無くても除去しない", () => {
+  const repo = fixtureRepo(); // web 側のチェックアウトを想定
+  const input = body({
+    rules: [
+      {
+        text: "APIの仕様（BE 由来）",
+        sources: [
+          { repo: "acme/api", file: "src/routes/invitations.ts", line: 42, pr: null },
+        ],
+      },
+      {
+        text: "画面の仕様（このリポジトリ由来）",
+        sources: [{ repo: "acme/web", file: "src/a.ts", line: 1, pr: null }],
+      },
+      {
+        text: "このリポジトリ由来だが実在しない",
+        sources: [{ repo: "acme/web", file: "src/ghost.ts", line: 1, pr: null }],
+      },
+    ],
+  });
+
+  const { body: pruned, droppedRules } = pruneInvalidSources(input, repo, "acme/web");
+
+  const texts = pruned.rules.map((r) => r.text);
+  assert.ok(
+    texts.includes("APIの仕様（BE 由来）"),
+    "他リポジトリ由来の記述が消えてはいけない（検証しようがないため）",
+  );
+  assert.ok(texts.includes("画面の仕様（このリポジトリ由来）"));
+  assert.deepEqual(droppedRules, ["このリポジトリ由来だが実在しない"]);
+});
+
+test("確度の計算でも他リポジトリの出典は対象外にする", () => {
+  const repo = fixtureRepo();
+  const check = checkSources(
+    body({
+      rules: [
+        {
+          text: "BE 由来",
+          sources: [{ repo: "acme/api", file: "src/nowhere.ts", line: 1, pr: null }],
+        },
+        { text: "自リポジトリ", sources: [{ repo: "acme/web", file: "src/a.ts", line: 1, pr: null }] },
+      ],
+    }),
+    repo,
+    "acme/web",
+  );
+  // BE 由来はカウントされないので、total は 1 で valid も 1
+  assert.equal(check.total, 1);
+  assert.equal(check.valid, 1);
 });

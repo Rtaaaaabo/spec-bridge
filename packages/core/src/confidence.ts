@@ -49,17 +49,34 @@ function sourceKey(s: SourceRef): string {
 }
 
 /**
+ * その出典が、いま解析しているリポジトリのものか。
+ *
+ * `repo` が空なのは「単一リポジトリなので省略された」ケースなので、自リポジトリ扱いにする。
+ */
+function isSameRepo(source: SourceRef, currentRepo: string): boolean {
+  return source.repo === "" || source.repo === currentRepo;
+}
+
+/**
  * 出典が実在するかをファイルシステムで検証する。
  *
  * 存在しないファイルを指す出典は**ハルシネーション**なので、確度を下げるだけでなく
  * 除去する（`pruneInvalidSources`）。「出典があるように見えるが実在しない」が
  * 一番たちが悪い状態なので、ここは機械的に潰す。
  */
-export function checkSources(body: FeatureDocBody, repoPath: string): SourceCheck {
+export function checkSources(
+  body: FeatureDocBody,
+  repoPath: string,
+  currentRepo: string,
+): SourceCheck {
   const seen = new Set<string>();
   const check: SourceCheck = { total: 0, valid: 0, missingFiles: [], outOfRange: [] };
 
   for (const source of collectSources(body)) {
+    // 他リポジトリ由来の出典は、いまのチェックアウトでは検証しようがない。
+    // 検証できないものを「無効」と扱うとマルチリポジトリで記述が消えるため対象外にする。
+    if (!isSameRepo(source, currentRepo)) continue;
+
     const key = sourceKey(source);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -90,11 +107,14 @@ export function checkSources(body: FeatureDocBody, repoPath: string): SourceChec
 export function pruneInvalidSources(
   body: FeatureDocBody,
   repoPath: string,
+  currentRepo: string,
 ): { body: FeatureDocBody; droppedSources: number; droppedRules: string[] } {
   let droppedSources = 0;
   const droppedRules: string[] = [];
 
   const isValid = (s: SourceRef): boolean => {
+    // 検証できない他リポジトリの出典は残す（消すと BE/FE 間で記述が失われる）
+    if (!isSameRepo(s, currentRepo)) return true;
     const abs = resolve(repoPath, s.file);
     if (!abs.startsWith(resolve(repoPath)) || !existsSync(abs)) return false;
     const lines = fileLineCount(abs);
@@ -152,6 +172,8 @@ function computeReadCoverage(
 export interface ConfidenceInput {
   body: FeatureDocBody;
   repoPath: string;
+  /** いま解析しているリポジトリ `owner/name` */
+  currentRepo: string;
   /** PR で変更されたファイル（リポジトリルートからの相対パス） */
   changedFiles: string[];
   /** エージェントが実際に開いたファイル */
@@ -167,15 +189,15 @@ export interface ConfidenceInput {
  * 観測できる指標だけからスコアを作る。自己申告は比較用に残すだけで加点には使わない。
  */
 export function computeConfidence(input: ConfidenceInput): ConfidenceBreakdown {
-  const { body, repoPath, changedFiles, filesRead, selfReported } = input;
+  const { body, repoPath, currentRepo, changedFiles, filesRead, selfReported } = input;
 
-  const check = checkSources(body, repoPath);
+  const check = checkSources(body, repoPath, currentRepo);
   const sourceValidity = check.total === 0 ? 0 : check.valid / check.total;
 
   const readCoverage = computeReadCoverage(filesRead, changedFiles, repoPath);
 
   // 仕様1項目あたり出典2件を満点とする
-  const totalSources = collectSources(body).length;
+  const totalSources = collectSources(body).filter((s) => isSameRepo(s, currentRepo)).length;
   const citationDensity =
     body.rules.length === 0 ? 0 : clamp01(totalSources / (body.rules.length * 2));
 
