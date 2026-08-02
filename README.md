@@ -109,11 +109,29 @@ like fabrications from the frontend checkout and were pruned before the merge la
 Unit tests never caught it because they only covered single-repository scenarios. Fixed, with regression
 tests.
 
+### End-to-end via the GitHub App
+
+The full automated path has been run against a real GitHub App installation:
+
+```
+merged PR → webhook → signature check → shallow clone → classify → analyze (confidence 0.96)
+          → pull request against the docs repo → clone deleted
+```
+
+Result: [docs PR with 610 lines](https://github.com/Rtaaaaabo/docs-specs/pull/1) from a 2-file source PR.
+The source pull request deliberately contained specs that are easy to get wrong — all six were captured:
+the expiry extension does **not** apply retroactively, resending does **not** extend the expiry, and only
+the invitation's creator or an owner may resend.
+
+Two bugs surfaced only during this real run: empty docs repositories could not be initialized (the Git Data
+API rejects `createBlob` before the first commit), and analysis results were discarded when publishing
+failed. Both are fixed.
+
 ### Not yet validated
 
 - Languages other than TypeScript and Go
-- The GitHub App path (webhook → docs repo PR) has been smoke-tested but not yet run against a real
-  installation end to end
+- Retries. A failed run must be redelivered manually from the GitHub App's Advanced tab (the generated
+  documents are preserved under `~/.spec-bridge/failed/` so the analysis is not lost)
 
 ## Quick start
 
