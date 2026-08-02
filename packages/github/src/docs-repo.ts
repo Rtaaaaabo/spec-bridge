@@ -21,6 +21,50 @@ export interface PublishResult {
   changedFiles: number;
 }
 
+const BOOTSTRAP_README = `# 機能仕様ドキュメント
+
+[spec-bridge](https://github.com/Rtaaaaabo/spec-bridge) が PR から自動生成・更新します。
+
+まだドキュメントはありません。最初の PR がマージされると \`features/\` の下に作られます。
+`;
+
+/**
+ * ベースブランチの SHA を返す。リポジトリが空なら初期コミットを作ってから返す。
+ *
+ * 作りたてのリポジトリにはコミットが1つもなく、`heads/main` の ref すら存在しない。
+ * docs リポジトリを空で用意するのは自然な出発点なので、ここで面倒を見る。
+ */
+export async function resolveBaseSha(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  base: string,
+): Promise<string> {
+  try {
+    const ref = await octokit.rest.git.getRef({ owner, repo, ref: `heads/${base}` });
+    return ref.data.object.sha;
+  } catch (error) {
+    const status = (error as { status?: number }).status;
+    if (status !== 404 && status !== 409) throw error;
+  }
+
+  // 完全に空のリポジトリでは Git Data API（blob / tree / commit）が一切使えず、
+  // createBlob すら 409 "Git Repository is empty" になる。
+  // 最初の1コミットだけは Contents API で作る必要がある。
+  const created = await octokit.rest.repos.createOrUpdateFileContents({
+    owner,
+    repo,
+    path: "README.md",
+    message: "chore: initialize docs repository",
+    content: Buffer.from(BOOTSTRAP_README, "utf8").toString("base64"),
+    branch: base,
+  });
+
+  const sha = created.data.commit.sha;
+  if (!sha) throw new Error("docs リポジトリの初期化に失敗しました");
+  return sha;
+}
+
 /** ブランチ名に使えない文字を落とす */
 function sanitizeBranchSegment(value: string): string {
   return value
@@ -52,12 +96,7 @@ export async function publishDocsAsPullRequest(
     target.baseBranch ??
     (await octokit.rest.repos.get({ owner, repo })).data.default_branch;
 
-  const baseRef = await octokit.rest.git.getRef({
-    owner,
-    repo,
-    ref: `heads/${base}`,
-  });
-  const baseSha = baseRef.data.object.sha;
+  const baseSha = await resolveBaseSha(octokit, owner, repo, base);
 
   const branch = `spec-bridge/${sanitizeBranchSegment(pr.branchSuffix)}-${Date.now().toString(36)}`;
 

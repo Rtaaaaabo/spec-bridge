@@ -30,7 +30,8 @@ spec-bridge webhook サーバー
 gh repo create <your-org>/<your-product>-specs --private
 ```
 
-中身は空で構いません。初回の PR で `features/` と `README.md` が作られます。
+中身は空で構いません。**コミットが1つもない空リポジトリでも動きます** —
+初回実行時に初期コミットを自動で作り、その上に PR を立てます。
 
 ## 2. GitHub App を作成する
 

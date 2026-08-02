@@ -42,6 +42,9 @@ app.post("/webhooks/github", async (c) => {
   void handleMergedPullRequest(event, { docsRepo: DOCS_REPO }, (line) => console.log(line))
     .then((result) => {
       console.log(`[webhook] ${event.repo}#${event.number} → ${result.status}: ${result.detail}`);
+      if (result.preservedPath) {
+        console.log(`[webhook] 解析結果は ${result.preservedPath} に残してあります`);
+      }
     })
     .catch((error: unknown) => {
       console.error(

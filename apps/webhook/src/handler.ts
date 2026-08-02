@@ -14,8 +14,9 @@ import {
   publishDocsAsPullRequest,
   type MergedPullRequestEvent,
 } from "@spec-bridge/github";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { cp, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { dirname } from "node:path";
 
 export interface HandlerConfig {
   /** ドキュメントの提出先 `owner/repo` */
@@ -28,6 +29,33 @@ export interface HandlerResult {
   status: "skipped" | "published" | "failed";
   detail: string;
   prUrl?: string;
+  /** 失敗時に解析結果を退避した場所 */
+  preservedPath?: string;
+}
+
+/**
+ * 失敗した解析結果を退避する。
+ *
+ * 解析には数分かかる。PR 作成が権限エラーで落ちただけで結果を捨てるのは損失が大きいので、
+ * 生成済みのドキュメントだけは残す。**ソースコードのチェックアウトは退避しない**
+ * （永続化しないというセキュリティ上の約束を崩さないため）。
+ */
+async function preserveDocs(
+  docsDir: string,
+  event: MergedPullRequestEvent,
+): Promise<string | null> {
+  try {
+    const entries = await readdir(join(docsDir, "features")).catch(() => []);
+    if (entries.length === 0) return null;
+
+    const slug = `${event.repo.replace("/", "-")}-${event.number}-${Date.now().toString(36)}`;
+    const destination = join(homedir(), ".spec-bridge", "failed", slug);
+    await mkdir(dirname(destination), { recursive: true });
+    await cp(docsDir, destination, { recursive: true });
+    return destination;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -124,7 +152,20 @@ export async function handleMergedPullRequest(
       detail: `${published.changedFiles} ファイルを提出しました`,
       prUrl: published.prUrl,
     };
+  } catch (error) {
+    // 解析結果まで到達していれば退避する。数分の処理を権限エラーひとつで捨てない
+    const preservedPath = await preserveDocs(docsDir, event);
+    const message = error instanceof Error ? error.message : String(error);
+    if (preservedPath) {
+      log(`  ⚠ 解析結果を退避しました: ${preservedPath}`);
+    }
+    return {
+      status: "failed",
+      detail: message,
+      ...(preservedPath ? { preservedPath } : {}),
+    };
   } finally {
+    // ソースコードのチェックアウトは失敗時も必ず消す（永続化しない約束のため）
     await checkout.cleanup();
     await rm(docsDir, { recursive: true, force: true });
   }
