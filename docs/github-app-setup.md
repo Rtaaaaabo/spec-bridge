@@ -41,9 +41,9 @@ gh repo create <your-org>/<your-product>-specs --private
 
    | 項目 | 値 |
    | --- | --- |
-   | GitHub App name | 任意（例: `spec-bridge-<your-org>`） |
-   | Homepage URL | 任意 |
-   | Webhook URL | 後述の公開 URL + `/webhooks/github` |
+   | GitHub App name | 任意（例: `spec-bridge-<your-org>`）。**全 GitHub で一意**である必要がある |
+   | Homepage URL | **必須**。`https://` から始まる有効な URL。決まっていなければ `https://github.com/Rtaaaaabo/spec-bridge` でよい |
+   | Webhook URL | この時点ではまだ確定しないので、仮に `https://example.com/webhooks/github` を入れておく。**手順4でトンネルを張ってから正しい URL に差し替える** |
    | Webhook secret | **強いランダム文字列を生成して控える**（例: `openssl rand -hex 32`） |
 
 3. Repository permissions
@@ -63,6 +63,14 @@ gh repo create <your-org>/<your-product>-specs --private
 
 > ⚠️ 秘密鍵と webhook secret はリポジトリにコミットしないでください。
 > `.gitignore` は `.env` と `.env.*` を除外しています。
+
+### 作成フォームでよく出るエラー
+
+| エラー | 対処 |
+| --- | --- |
+| `Homepage URL must be a valid URL` | 必須項目。`https://` から始まる完全な URL を入れる（`github.com/...` だけでは通らない） |
+| `Name has already been taken` | App 名は**全 GitHub で一意**。アカウント名などを付けて重複を避ける |
+| `Webhook URL is not a valid URL` | こちらも `https://` から始まる完全な URL が必要。仮の URL で先に進んでよい |
 
 ## 3. 環境変数を設定する
 
@@ -92,14 +100,20 @@ GitHub からローカルマシンへは直接届かないので、トンネル�
 cloudflared tunnel --url http://localhost:3939
 ```
 
-表示された `https://....trycloudflare.com` を、GitHub App の Webhook URL に
-`/webhooks/github` を付けて設定します。
+表示された `https://....trycloudflare.com` に `/webhooks/github` を付けたものが、本当の Webhook URL です。
 
 ```
 https://xxxx-yyyy.trycloudflare.com/webhooks/github
 ```
 
+**GitHub App の設定画面に戻り、手順2で仮に入れた Webhook URL をこれに差し替えてください。**
+（App の設定ページ → General → Webhook → Webhook URL）
+
 `smee.io` や `ngrok` でも構いません。
+
+> ⚠️ `cloudflared tunnel --url` で発行される URL は**起動のたびに変わります**。
+> トンネルを張り直したら、その都度 Webhook URL を更新する必要があります。
+> 固定 URL が欲しい場合は `smee.io` を使うか、cloudflared の名前付きトンネルを設定してください。
 
 ## 5. 起動する
 
