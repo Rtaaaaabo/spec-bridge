@@ -190,6 +190,26 @@ pnpm web
 | Engineering request | Only for bug verdicts. Detailed enough to file directly |
 | To confirm | Open questions from the doc, plus a warning if the doc is still `draft` |
 
+## Narrowing as the corpus grows
+
+Putting every document into the prompt stops working as the corpus grows. Instead the index
+(id, title, summary, glossary aliases) is consulted first to pick the relevant documents, and only those
+are loaded in full.
+
+This kicks in automatically past six documents; below that the extra round trip isn't worth it.
+
+Measured on a 20-document corpus:
+
+| Question | Consulted | Time |
+| --- | --- | --- |
+| A feature asked about by a customer-facing synonym | **1 of 20** | 40s |
+| A topic the docs don't cover at all | **0 of 20** | **5s** |
+
+When nothing is relevant, that is clear from the index alone — so "can't determine" comes back without
+reading a single document in full.
+
+No extra infrastructure (no Postgres, no vector store). Past a few hundred documents, consider adding one.
+
 ## What gets generated
 
 ```markdown
@@ -309,6 +329,7 @@ packages/core/          the analysis pipeline
   store.ts              reads/writes the docs directory and its index page
   pipeline.ts           wires the above together
   ask.ts                support Q&A: verdict, customer reply, citations
+  select-docs.ts        narrows the corpus to the documents a question needs
   confidence.ts         source verification and machine-derived confidence
   pr-body.ts            builds the docs-repo pull request description
 packages/github/        PR retrieval, docs-repo PRs, webhook verification, shallow checkout

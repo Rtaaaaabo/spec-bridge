@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { extractJson, runAgent, READ_ONLY_DENY_LIST } from "./agent.ts";
 import { renderMarkdown } from "./markdown.ts";
+import { selectRelevantDocs } from "./select-docs.ts";
 import { DocStore } from "./store.ts";
 import type { FeatureDoc } from "./types.ts";
 
@@ -101,15 +102,27 @@ function docContext(docs: FeatureDoc[]): string {
 export interface AskOptions {
   docsPath: string;
   model?: string;
+  /** 絞り込みに使うモデル。省略時は軽量モデル */
+  selectModel?: string;
+}
+
+export interface AskResult {
+  answer: AskAnswer;
+  /** 参照できたドキュメントの総数 */
+  docCount: number;
+  /** 実際に全文を読み込んだ件数 */
+  consultedCount: number;
+  /** 絞り込みを実行したか */
+  narrowed: boolean;
 }
 
 export async function askSupportQuestion(
   question: string,
   options: AskOptions,
-): Promise<{ answer: AskAnswer; docCount: number }> {
-  const docs = await new DocStore(options.docsPath).list();
+): Promise<AskResult> {
+  const all = await new DocStore(options.docsPath).list();
 
-  if (docs.length === 0) {
+  if (all.length === 0) {
     return {
       answer: {
         verdict: "unknown",
@@ -123,6 +136,35 @@ export async function askSupportQuestion(
         followUp: [],
       },
       docCount: 0,
+      consultedCount: 0,
+      narrowed: false,
+    };
+  }
+
+  // 件数が増えると全文をプロンプトに入れる方式は破綻するので、先に索引で絞り込む
+  const selection = await selectRelevantDocs(question, all, { model: options.selectModel });
+  const docs = selection.docs;
+
+  // 索引の段階で「関係するものがない」と判断されたら、全文を読むまでもない
+  if (docs.length === 0) {
+    return {
+      answer: {
+        verdict: "unknown",
+        confidence: 0,
+        headline: "この問い合わせに関係する仕様ドキュメントが見つかりませんでした。",
+        answerForCustomer: "",
+        explanation:
+          `参照できる ${all.length} 件のドキュメントを確認しましたが、関係するものがありませんでした。` +
+          (selection.reason ? `\n\n${selection.reason}` : ""),
+        citations: [],
+        devRequest: null,
+        followUp: [
+          "この機能の仕様ドキュメントが存在するか、開発チームに確認してください。",
+        ],
+      },
+      docCount: all.length,
+      consultedCount: 0,
+      narrowed: selection.narrowed,
     };
   }
 
@@ -160,9 +202,16 @@ export async function askSupportQuestion(
           `（※ 出典を示せない回答だったため、システム側で「判断できない」に変更しました。開発チームに確認してください）`,
         confidence: 0,
       },
-      docCount: docs.length,
+      docCount: all.length,
+      consultedCount: docs.length,
+      narrowed: selection.narrowed,
     };
   }
 
-  return { answer, docCount: docs.length };
+  return {
+    answer,
+    docCount: all.length,
+    consultedCount: docs.length,
+    narrowed: selection.narrowed,
+  };
 }

@@ -61,6 +61,7 @@ function CopyBlock({ label, text }: { label: string; text: string }) {
 export function AskPanel({ samples }: { samples: string[] }) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<AskAnswer | null>(null);
+  const [scope, setScope] = useState<{ docCount: number; consultedCount: number; narrowed: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,9 +76,20 @@ export function AskPanel({ samples }: { samples: string[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: text }),
       });
-      const data = (await res.json()) as { answer?: AskAnswer; error?: string };
+      const data = (await res.json()) as {
+        answer?: AskAnswer;
+        docCount?: number;
+        consultedCount?: number;
+        narrowed?: boolean;
+        error?: string;
+      };
       if (!res.ok || !data.answer) throw new Error(data.error ?? "回答の取得に失敗しました");
       setAnswer(data.answer);
+      setScope({
+        docCount: data.docCount ?? 0,
+        consultedCount: data.consultedCount ?? 0,
+        narrowed: data.narrowed ?? false,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -152,6 +164,14 @@ export function AskPanel({ samples }: { samples: string[] }) {
               </span>
               <span className="text-xs" style={{ color: "var(--muted)" }}>
                 {verdict.hint} ・ 確度 {Math.round(answer.confidence * 100)}%
+                {scope?.narrowed && (
+                  <>
+                    {" ・ "}
+                    <span title="件数が多いため、索引で関係するドキュメントを絞り込んでから回答しています">
+                      {scope.docCount} 件中 {scope.consultedCount} 件を参照
+                    </span>
+                  </>
+                )}
               </span>
             </div>
             <p className="mt-3 text-base font-medium">{answer.headline}</p>
