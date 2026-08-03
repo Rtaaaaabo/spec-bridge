@@ -252,7 +252,7 @@ PR マージ → webhook → 署名検証 → 浅くクローン → 分類 → 
 docs リポジトリへの PR が承認フローそのものです。人間がマージするまで生成物は `status: draft` のままです。
 
 GitHub App の作成・権限・ローカルへのトンネリングの手順は
-[docs/github-app-setup.md](docs/github-app-setup.md) にあります。
+[docs/github-app-setup.ja.md](docs/github-app-setup.ja.md) にあります。
 
 ## マルチリポジトリ
 
@@ -307,7 +307,7 @@ Agent SDK の `allowedTools` は**「自動承認するツール」の指定で�
 サポートデスクの回答エージェントには、読み取り系も含めて**ツールを一切渡していません**。
 与えられたドキュメント以外は参照できないため、「コードを勝手に読んで推測した」が構造的に起きません。
 
-セキュリティモデルと報告手順は [SECURITY.md](SECURITY.md) を参照してください。
+セキュリティモデルと報告手順は [SECURITY.ja.md](SECURITY.ja.md) を参照してください。
 
 ## 構成
 
@@ -341,7 +341,7 @@ pnpm typecheck   # core / cli / web
 テストは **LLM の出力に依存しない部分**を対象にしています — Markdown 生成の決定論性、
 出典なし記述の除去、スキーマの型強制。ここが壊れると誤答が顧客に届くため、回帰の壁として機能させています。
 
-コントリビュートする場合は [CONTRIBUTING.md](CONTRIBUTING.md) を読んでください。
+コントリビュートする場合は [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md) を読んでください。
 このプロジェクトが守っている不変条件を書いてあります。
 
 ## この先の予定

@@ -1,60 +1,90 @@
 # Contributing
 
-## 開発環境
+日本語版: [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md)
 
-Node 22 以上と pnpm が必要です。
+## Development setup
+
+Requires Node 22+ and pnpm.
 
 ```bash
 pnpm install
 cp .env.example .env
 ```
 
-| コマンド | 内容 |
+| Command | What it does |
 | --- | --- |
-| `pnpm test` | テスト（LLM を呼ばないので高速・無料） |
-| `pnpm typecheck` | 型チェック（core / cli / web すべて） |
-| `pnpm analyze --pr <PR> --repo <path> --docs <path>` | PR を1件解析 |
-| `pnpm web` | CX サポートデスク画面 |
+| `pnpm test` | Tests — no LLM calls, so they're fast and free |
+| `pnpm typecheck` | Type checking across core / cli / web |
+| `pnpm analyze --pr <PR> --repo <path> --docs <path>` | Analyze a single pull request |
+| `pnpm web` | The support desk UI |
+| `pnpm webhook` | The GitHub App webhook server |
 
-## このプロジェクトで守っていること
+## Invariants this project maintains
 
-PR を送る前に、以下の不変条件を壊していないか確認してください。**これらは仕様であって実装の都合ではありません。**
+Please check these before opening a pull request. **They are the specification, not implementation
+details.**
 
-### 1. 出典のない記述をドキュメントに出さない
+### 1. Nothing unsourced is ever written
 
-CS が AI の回答を信じて顧客に誤答することが、このプロジェクトで最も避けたい事故です。
+A support agent relaying a confidently wrong AI answer to a customer is the failure this project exists
+to prevent.
 
-- `SpecRule.sources` は `min(1)`。出典ゼロの仕様項目はスキーマ上存在できません
-- `mergeAnalysis()` が違反を書き出し前に落とします
-- `askSupportQuestion()` は、出典ゼロで `spec` / `bug` を返してきた回答を強制的に `unknown` に書き換えます
+- `SpecRule.sources` is `min(1)` — a spec item with zero citations cannot exist in the schema.
+- `mergeAnalysis()` drops violations before anything is written.
+- `pruneInvalidSources()` removes citations pointing at files that don't exist, and drops any spec item
+  left with none.
+- `askSupportQuestion()` rewrites a `spec` / `bug` verdict to `unknown` when the answer cites no sources.
 
-この強制は **UI ではなくロジック側**に置いてください。画面の実装ミスで誤答が漏れる余地をなくすためです。
+**Enforce this in the logic layer, not in the UI.** A rendering mistake must never be able to leak a
+wrong answer.
 
-### 2. 「わからない」と言えることを壊さない
+### 2. Don't break the ability to say "I don't know"
 
-コードから読み取れない仕様を推測で埋めさせない、という指示がプロンプトに入っています。
-プロンプトを変更するときは、`openQuestions` と `verdict: "unknown"` が正しく出ることを確認してください。
+The prompts instruct the agent not to fill gaps with guesses. If you change a prompt, verify that
+`openQuestions` still gets populated and that `verdict: "unknown"` still comes back for questions the
+documents can't answer.
 
-### 3. Markdown 生成は決定論的に保つ
+### 3. Markdown rendering stays deterministic
 
-同じ入力からは常に同じバイト列が出る必要があります。docs リポジトリの diff がノイズだらけになると、
-人間のレビューが機能しなくなるためです。`markdown.test.ts` がこれを守っています。
+Identical input must always produce identical bytes. Once diffs in the docs repository become noisy,
+human review stops working — and human review is the approval gate for everything this tool generates.
+`markdown.test.ts` guards this.
 
-### 4. 解析エージェントに書き込み・ネットワーク系ツールを渡さない
+### 4. The analysis agent gets no write or network tools
 
-Agent SDK の `allowedTools` は「自動承認リスト」であって**使えるツールの制限ではありません**。
-実際に禁止できるのは `disallowedTools` だけです（`packages/core/src/agent.ts` の `READ_ONLY_DENY_LIST`）。
-ここを緩めると、解析対象リポジトリの書き換えや、顧客のソースコードの外部送信が可能になります。
+The Agent SDK's `allowedTools` is an **auto-approval list, not a restriction**. The only thing that
+actually blocks a tool is `disallowedTools` (see `READ_ONLY_DENY_LIST` in
+[`packages/core/src/agent.ts`](packages/core/src/agent.ts)).
 
-## テストの方針
+Loosening this would allow the repository under analysis to be modified, or customer source code to be
+sent to an external service. Treat any such change as a security change.
 
-LLM の出力に依存しない部分（Markdown 生成、マージ、スキーマの型強制）にテストを置いています。
-LLM を呼ぶテストは書いていません — 非決定的で、CI で回すとコストがかかるためです。
+### 5. Citations from other repositories are never pruned
 
-**新しいスキーマの緩和（LLM 出力のズレ吸収）を入れるときは、必ず `types.test.ts` にケースを追加してください。**
-どの形まで受け付けるかが、このプロジェクトの実質的な契約になっています。
+One feature can span several repositories. An agent analyzing the frontend cannot verify backend file
+paths, so those citations must be left alone rather than treated as fabrications.
 
-## Issue / PR
+This was a real regression: source verification ran against the currently checked-out repository only,
+which silently deleted backend-derived content. Regression tests live in `confidence.test.ts`.
 
-- バグ報告には、生成されたドキュメントか CLI の出力を添えてください（機密が含まれる場合は伏せて構いません）
-- プロンプトの変更を提案する場合は、変更前後で生成されたドキュメントの差分を添えてください
+## Testing policy
+
+Tests cover the parts that **don't depend on model output**: deterministic Markdown rendering, merge
+behavior, schema coercion, source verification, webhook signature checks.
+
+There are no tests that call an LLM — they would be non-deterministic and would cost money on every CI
+run.
+
+**If you loosen the schema to absorb a new shape of model output, add a case to `types.test.ts`.**
+What shapes are accepted is effectively this project's contract.
+
+## Issues and pull requests
+
+- For bug reports, include the generated document or CLI output. Redact anything confidential.
+- For prompt changes, include a before/after diff of a generated document.
+- Reports from stacks other than TypeScript and Go are especially welcome — see the "generated document
+  quality" issue template.
+
+## Security
+
+Please don't report vulnerabilities in a public issue. See [SECURITY.md](SECURITY.md).

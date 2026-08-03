@@ -1,77 +1,89 @@
-# セキュリティポリシー
+# Security Policy
 
-spec-bridge は**ソースコードと API 認証情報の両方を扱う**ツールです。
-導入前に、以下の設計と注意点を確認してください。
+日本語版: [SECURITY.ja.md](SECURITY.ja.md)
 
-## 脆弱性の報告
+spec-bridge handles **both source code and API credentials**. Please read this before deploying it.
 
-公開 Issue で報告しないでください。GitHub の
-[Security Advisories](https://github.com/Rtaaaaabo/spec-bridge/security/advisories/new)
-から非公開で報告してください。
+## Reporting a vulnerability
 
-初回応答の目標は7日以内です。個人で運用しているため SLA は保証できません。
+Do not open a public issue. Report privately through
+[GitHub Security Advisories](https://github.com/Rtaaaaabo/spec-bridge/security/advisories/new).
 
-## 対象バージョン
+Target for a first response is 7 days. This is maintained by one person, so no SLA is guaranteed.
 
-`main` ブランチの最新のみをサポートします。0.x の間は後方互換性を保証しません。
+## Supported versions
 
-## 設計上の防御
+Only the latest `main`. No backward compatibility is promised during 0.x.
 
-### 解析エージェントに渡すツールを制限している
+## Design-level defenses
 
-Claude Agent SDK の `allowedTools` は**「自動承認するツール」の指定であって、使えるツールの制限ではありません**。
-`permissionMode: "bypassPermissions"` と併用すると全ツールが素通りします。
+### The analysis agent runs with tools removed
 
-実際に禁止できるのは `disallowedTools` だけです
-（[`packages/core/src/agent.ts`](packages/core/src/agent.ts) の `READ_ONLY_DENY_LIST`）。
+The Claude Agent SDK's `allowedTools` specifies **which tools are auto-approved — it is not a
+restriction**. Combined with `permissionMode: "bypassPermissions"`, every tool passes through.
 
-| ツール | 禁止する理由 |
+The only mechanism that actually blocks a tool is `disallowedTools`
+(`READ_ONLY_DENY_LIST` in [`packages/core/src/agent.ts`](packages/core/src/agent.ts)).
+
+| Tool | Why it's denied |
 | --- | --- |
-| `Write` / `Edit` / `NotebookEdit` | 解析対象リポジトリを書き換えさせない |
-| `WebFetch` / `WebSearch` | ソースコードを外部に送信させない |
-| `Bash` | 既定で禁止。`--allow-bash` を明示したときのみ許可 |
+| `Write` / `Edit` / `NotebookEdit` | Never modify the repository being analyzed |
+| `WebFetch` / `WebSearch` | Never send source code to an external service |
+| `Bash` | Denied by default; allowed only with an explicit `--allow-bash` |
 
-**この制限を緩める変更は、セキュリティ上の変更として扱ってください。**
+**Treat any loosening of this list as a security change.**
 
-### ソースコードを永続化しない
+### Source code is never persisted
 
-解析時にローカルのチェックアウトを読むだけで、ソースコードそのものは保存しません。
-永続化されるのは生成された機能ドキュメントのみです。
+Analysis reads a local checkout (or a shallow clone into a temp directory when running from the webhook
+server) and deletes it afterwards — including when the run fails. Only the generated feature documents
+are kept.
 
-### CX サポートデスク画面はドキュメントしか読めない
+### The support desk agent has no tools at all
 
-回答エージェントには `Read` / `Grep` / `Glob` も含めて**ツールを一切渡していません**。
-与えられた機能ドキュメント以外は参照できないため、「コードを勝手に読んで推測した回答」が構造的に発生しません。
+The question-answering agent is given no tools, not even read-only ones. It can only see the documents
+handed to it, so "the model went and read the code and guessed" cannot happen structurally.
 
-## 利用者側で注意すべきこと
+## What operators need to know
 
-### 生成されたドキュメントの公開範囲
+### Where generated documents end up
 
-**生成される機能ドキュメントには、ソースファイルのパス・行番号・内部仕様が含まれます。**
-出典として意図的にそうしています。
+**Generated documents contain source file paths, line numbers, and internal specifications.** That is
+intentional — they are the citations.
 
-docs リポジトリを公開設定にすると、内部構造が外部から読めます。
-**docs リポジトリは非公開にしてください。**
+If your docs repository is public, your internal structure is readable by anyone. **Keep the docs
+repository private.**
 
-### 認証情報の扱い
+### Do not install the GitHub App on the docs repository
 
-| 変数 | 内容 |
+If you do, merging a generated pull request fires a webhook, which analyzes the docs repository itself
+and opens another pull request — repeating indefinitely.
+
+Writes to the docs repository use `GITHUB_TOKEN`, so the App does not need to be installed there. The
+code also guards against this, but not installing it is the reliable fix.
+
+### Credentials
+
+| Variable | Notes |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | 未設定なら Claude Code のログイン情報が使われます |
-| `GITHUB_TOKEN` | Phase 0 は読み取りのみ。`Pull requests: Read-only` + `Contents: Read-only` で足ります |
+| `ANTHROPIC_API_KEY` | If unset, the Claude Code login is used |
+| `GITHUB_TOKEN` | Needs `Contents` and `Pull requests` at **Read and write** for the webhook flow |
+| `GITHUB_WEBHOOK_SECRET` | Signature verification is the **only** authentication on the webhook endpoint |
 
-- `.env` は `.gitignore` で除外されています（`.env.*` によりバックアップも対象）
-- GitHub トークンは**必要最小限の権限**にしてください。Fine-grained PAT では
-  `All repositories` ではなく `Only select repositories` を推奨します
+- `.env` is excluded by `.gitignore` (the `.env.*` pattern also covers backups).
+- Scope the GitHub token to the minimum. With fine-grained PATs, prefer `Only select repositories` over
+  `All repositories`.
+- If `GITHUB_WEBHOOK_SECRET` is unset, the webhook endpoint rejects **every** request rather than
+  accepting unsigned ones.
 
-### 生成されたドキュメントを顧客対応に使う前に
+### Review before using generated documents with customers
 
-自動生成されたドキュメントは `status: draft`（AI生成・未レビュー）です。
-**顧客への回答に使う前に、開発者のレビューを通してください。**
-CX サポートデスク画面は、draft を根拠にした回答にその旨の警告を付けます。
+Generated documents carry `status: draft` (AI-generated, unreviewed). **Have an engineer review them
+before support uses them to answer customers.** The support desk attaches a warning to any answer whose
+sources are still `draft`.
 
-### 解析対象リポジトリの信頼性
+### Repositories you analyze are untrusted input
 
-解析対象のリポジトリに含まれるコードやコメントは、エージェントにとって**信頼できない入力**です。
-書き込み・ネットワーク系ツールを禁止しているのはこのためですが、
-信頼できない第三者のリポジトリを解析する場合は、隔離された環境で実行してください。
+Code and comments in the repository under analysis are untrusted input to the agent. Denying write and
+network tools is the mitigation, but if you analyze repositories from third parties you don't trust, run
+it in an isolated environment.
