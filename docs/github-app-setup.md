@@ -60,7 +60,13 @@ gh repo create <your-org>/<your-product>-specs --private
 6. 作成後の画面で:
    - **App ID** を控える
    - **Generate a private key** で秘密鍵（`.pem`）をダウンロード
-7. 左メニューの Install App から、解析対象リポジトリと docs リポジトリの両方にインストールする
+7. 左メニューの Install App から、**解析対象リポジトリにのみ**インストールする
+
+> ⚠️ **docs リポジトリには App をインストールしないでください。**
+> インストールすると、生成された PR をマージするたびに webhook が発火し、
+> docs リポジトリ自身を解析して次の PR を作る**無限ループ**になります。
+> docs リポジトリへの書き込みは `GITHUB_TOKEN`（PAT）で行うので、App のインストールは不要です。
+> （コード側にもガードを入れてありますが、そもそも入れないのが確実です）
 
 > ⚠️ 秘密鍵と webhook secret はリポジトリにコミットしないでください。
 > `.gitignore` は `.env` と `.env.*` を除外しています。
@@ -157,6 +163,7 @@ curl http://localhost:3939/health
 | 401 が返る | `GITHUB_WEBHOOK_SECRET` が GitHub App 側の設定と違う |
 | 202 は返るが PR ができない | サーバーログを確認。`GITHUB_TOKEN` の権限不足が多い |
 | `{"ignored":true}` | マージされた PR 以外は無視する仕様。正常 |
+| 生成された PR をマージすると、また PR ができる | docs リポジトリに App がインストールされている。外してください |
 | 解析が始まらない | 分類でスキップされている。ログの「影響なし」の理由を確認 |
 
 GitHub App の Advanced タブから、送信された webhook の内容と再送（Redeliver）ができます。

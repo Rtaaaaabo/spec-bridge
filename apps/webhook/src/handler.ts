@@ -11,6 +11,7 @@ import {
   checkoutForAnalysis,
   createOctokit,
   fetchPullRequest,
+  isDocsRepoEvent,
   publishDocsAsPullRequest,
   type MergedPullRequestEvent,
 } from "@spec-bridge/github";
@@ -70,6 +71,14 @@ export async function handleMergedPullRequest(
   config: HandlerConfig,
   log: (line: string) => void = () => {},
 ): Promise<HandlerResult> {
+  // docs リポジトリ自身の PR を解析すると、マージのたびに次の PR を生む無限ループになる
+  if (isDocsRepoEvent(event.repo, config.docsRepo)) {
+    return {
+      status: "skipped",
+      detail: "docs リポジトリ自身の PR のため処理しません（自己ループ防止）",
+    };
+  }
+
   const [owner, repo] = event.repo.split("/");
   if (!owner || !repo) {
     return { status: "failed", detail: `リポジトリ名を解釈できません: ${event.repo}` };

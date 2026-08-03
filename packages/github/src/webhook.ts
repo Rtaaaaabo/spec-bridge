@@ -26,6 +26,17 @@ export function verifyWebhookSignature(
   }
 }
 
+/**
+ * その PR が docs リポジトリ自身のものか。
+ *
+ * docs リポジトリに App をインストールすると、生成された PR をマージするたびに
+ * webhook が発火し、docs リポジトリ自身を解析して次の PR を作る**無限ループ**になる。
+ * インストール漏れではなく仕組み上の事故なので、コード側で止める。
+ */
+export function isDocsRepoEvent(repo: string, docsRepo: string): boolean {
+  return repo.trim().toLowerCase() === docsRepo.trim().toLowerCase();
+}
+
 export interface MergedPullRequestEvent {
   repo: string;
   number: number;

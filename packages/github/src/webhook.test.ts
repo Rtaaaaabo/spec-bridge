@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { test } from "node:test";
-import { parseMergedPullRequest, verifyWebhookSignature } from "./webhook.ts";
+import { isDocsRepoEvent, parseMergedPullRequest, verifyWebhookSignature } from "./webhook.ts";
 
 const SECRET = "s3cret";
 const sign = (body: string) =>
@@ -78,4 +78,21 @@ test("必須フィールドが欠けていたら無視する", () => {
     null,
   );
   assert.equal(parseMergedPullRequest("pull_request", {}), null);
+});
+
+// --- 自己ループ防止（実運用で踏んだ事故の固定） ---
+
+test("docs リポジトリ自身の PR は処理対象にしない", () => {
+  // 生成された PR をマージするたびに次の PR が生まれる無限ループを防ぐ
+  assert.equal(isDocsRepoEvent("acme/specs", "acme/specs"), true);
+});
+
+test("大文字小文字や前後の空白が違っても同一リポジトリとみなす", () => {
+  assert.equal(isDocsRepoEvent("Acme/Specs", "acme/specs"), true);
+  assert.equal(isDocsRepoEvent(" acme/specs ", "acme/specs"), true);
+});
+
+test("解析対象リポジトリは通す", () => {
+  assert.equal(isDocsRepoEvent("acme/backend", "acme/specs"), false);
+  assert.equal(isDocsRepoEvent("acme/specs-web", "acme/specs"), false);
 });
