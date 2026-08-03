@@ -85,6 +85,10 @@ What shapes are accepted is effectively this project's contract.
 - Reports from stacks other than TypeScript and Go are especially welcome — see the "generated document
   quality" issue template.
 
+## Code of conduct
+
+Participation is governed by the [Contributor Covenant](CODE_OF_CONDUCT.md).
+
 ## Security
 
 Please don't report vulnerabilities in a public issue. See [SECURITY.md](SECURITY.md).
