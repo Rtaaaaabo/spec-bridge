@@ -6,6 +6,19 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
+/**
+ * エラーメッセージから認証トークンを伏せる。
+ *
+ * クローン URL にトークンを埋め込んでいるため、git の失敗メッセージがそのまま
+ * ログに出るとトークンが漏れる。
+ */
+export function maskToken(message: string): string {
+  // URL の userinfo 部（`user:password@` / `x-access-token:token@`）をまるごと伏せる。
+  // 2段構えにすると「1段目でマスクした結果を2段目がさらに置換する」ような
+  // 順序依存の穴ができるので、1回の置換で済ませる。
+  return message.replace(/(https?:\/\/)[^@\s/]+@/g, "$1***@");
+}
+
 export interface CheckoutOptions {
   repo: string;
   /** この SHA の状態を取り出す。省略時は既定ブランチの最新 */
@@ -51,7 +64,7 @@ export async function checkoutForAnalysis(options: CheckoutOptions): Promise<Che
     const message = error instanceof Error ? error.message : String(error);
     // トークンが混入しないようマスクする
     throw new Error(
-      `リポジトリの取得に失敗しました: ${options.repo}\n${message.replace(/x-access-token:[^@]+@/g, "x-access-token:***@")}`,
+      `リポジトリの取得に失敗しました: ${options.repo}\n${maskToken(message)}`,
     );
   }
 

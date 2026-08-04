@@ -93,9 +93,24 @@ export async function selectRelevantDocs(
     maxTurns: 2,
   });
 
+  return resolveSelection(text, docs, limit);
+}
+
+/**
+ * 絞り込みエージェントの出力を、実際のドキュメント一覧へ解決する。
+ *
+ * ここが本体から切り離してあるのは、**この製品で最も怖い失敗**——
+ * 関係のないドキュメントを根拠に回答してしまうこと——がここで起きるため。
+ * LLM を呼ばずに検証できるようにしてある。
+ */
+export function resolveSelection(
+  rawText: string,
+  docs: FeatureDoc[],
+  limit: number = MAX_SELECTED_DOCS,
+): SelectionResult {
   let parsed: z.infer<typeof SelectionOutput>;
   try {
-    parsed = SelectionOutput.parse(extractJson(text));
+    parsed = SelectionOutput.parse(extractJson(rawText));
   } catch {
     // 絞り込みに失敗したら全件にフォールバックする。
     // 回答できなくなるより、コストを払ってでも答えられるほうがよい。
@@ -103,9 +118,15 @@ export async function selectRelevantDocs(
   }
 
   const byId = new Map(docs.map((d) => [d.meta.id, d]));
+  const seen = new Set<string>();
   const selected = parsed.docIds
-    .map((id) => byId.get(id))
-    .filter((d): d is FeatureDoc => d !== undefined)
+    .filter((id) => {
+      // 存在しない id と重複を落とす。ハルシネーションした id で全件に戻さない
+      if (!byId.has(id) || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    })
+    .map((id) => byId.get(id) as FeatureDoc)
     .slice(0, limit);
 
   return { docs: selected, narrowed: true, reason: parsed.reason };
