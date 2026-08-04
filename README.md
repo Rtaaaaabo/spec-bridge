@@ -118,7 +118,9 @@ merged PR → webhook → signature check → shallow clone → classify → ana
           → pull request against the docs repo → clone deleted
 ```
 
-Result: [docs PR with 610 lines](https://github.com/Rtaaaaabo/docs-specs/pull/1) from a 2-file source PR.
+A 2-file source pull request produced a 610-line pull request against the docs repository. (That
+repository is private, as a docs repository should be — its contents are internal file paths and
+specifications.)
 The source pull request deliberately contained specs that are easy to get wrong — all six were captured:
 the expiry extension does **not** apply retroactively, resending does **not** extend the expiry, and only
 the invitation's creator or an owner may resend.
