@@ -369,7 +369,6 @@ project maintains.
 - The analysis agent can only read one repository at a time.
 - Duplicate detection only normalizes surrounding whitespace. If the model rephrases a rule, the duplicate
   survives and is expected to be caught in review of the docs repository PR.
-- Automatic PRs to the docs repository are not implemented; output is written to a local directory.
 - No filtering for very large PRs. Diffs are simply truncated at 20,000 characters per file and
   180,000 characters overall.
 - If someone hand-edits the generated Markdown and breaks the `spec-bridge:data` block, that file is skipped
