@@ -19,6 +19,7 @@ const breakdown: ConfidenceBreakdown = {
   score: 0.92,
   sourceValidity: 1,
   readCoverage: 0.8,
+  coverageKind: "changed-files",
   citationDensity: 1,
   determinacy: 0.75,
   selfReported: 0.8,

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "analyze": "tsx apps/cli/src/index.ts analyze",
+    "backfill": "tsx apps/cli/src/index.ts backfill",
     "web": "pnpm --filter @spec-bridge/web dev",
     "test": "tsx --test \"packages/**/*.test.ts\" \"apps/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm --filter @spec-bridge/web exec tsc --noEmit -p tsconfig.json",

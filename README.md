@@ -177,6 +177,31 @@ pnpm analyze \
 | `--allow-bash` | Allow the agent to use Bash (e.g. to follow `git log`) |
 | `--quiet` | Suppress progress output |
 
+### Backfill from existing code
+
+Analyzing one pull request at a time means the day you adopt the tool, you have nothing.
+Backfill writes the initial set of feature documents from the code as it stands today.
+
+```bash
+pnpm backfill --repo ~/dev/acme-backend --docs ~/dev/acme-specs --limit 12
+```
+
+It first surveys the repository to decide **which features deserve a document**, then writes each one
+using the same procedure as pull-request analysis. Features that already have a document are linked to
+the existing one rather than duplicated, so the command is safe to re-run.
+
+| Option | Description |
+| --- | --- |
+| `--limit` | Maximum number of features to generate (default 20) |
+| `--repo-name` | `org/repo`. Inferred from `git remote origin` when omitted; aborts if it cannot be determined |
+
+**Confidence is measured differently here.** With a pull request you can measure how much of the diff the
+agent actually read. Backfill has no diff, so it measures whether the agent actually opened the files it
+cited. Checking that `file:line` exists (`sourceValidity`) cannot catch a citation to a real file the
+agent never read.
+
+Change history entries carry no pull-request reference, so no fictitious PR numbers are created.
+
 ### Run the support desk
 
 ```bash
@@ -325,6 +350,7 @@ packages/core/          the analysis pipeline
   types.ts              FeatureDoc schema (zod) — the contract lives here
   agent.ts              thin Claude Agent SDK wrapper; the single auth entry point
   classify.ts           does this PR affect the spec, and which feature? (no tools, fast)
+  survey.ts             enumerates features from the codebase (backfill's entry point — no diff)
   analyze.ts            explores the repository and generates document content
   merge.ts              merges results into the existing doc; drops unsourced items
   markdown.ts           FeatureDoc ⇄ Markdown, deterministically
@@ -358,7 +384,7 @@ project maintains.
 
 | Phase | Scope |
 | --- | --- |
-| 0 (current) | PR → feature docs, CLI + support desk UI |
+| 0 (current) | PR → feature docs, backfill from existing code, CLI + support desk UI |
 | 1 | GitHub App webhooks, automatic PRs to the docs repository |
 | 2 | Filing to issue trackers, feedback loop from unanswered questions |
 | 3 | Impact analysis, screen flow diagrams, E2E test generation |

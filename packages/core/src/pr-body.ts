@@ -1,6 +1,14 @@
-import type { ConfidenceBreakdown } from "./confidence.ts";
+import type { ConfidenceBreakdown, CoverageKind } from "./confidence.ts";
 import type { MergeWarning } from "./merge.ts";
 import type { FeatureDoc, PullRequestInput } from "./types.ts";
+
+/**
+ * 読了率が何を測ったかのラベル。
+ * PR 解析とバックフィルで指標が違うので、同じ名前で並べるとレビュアーが誤読する。
+ */
+export function coverageLabel(kind: CoverageKind): string {
+  return kind === "cited-files" ? "出典ファイル読了" : "変更ファイル読了";
+}
 
 export interface DocChange {
   doc: FeatureDoc;
@@ -46,7 +54,7 @@ export function buildDocsPullRequestBody(
     lines.push(
       `**確度 ${doc.meta.confidence.toFixed(2)}** — ` +
         `出典の実在 ${breakdown.sourceValidity.toFixed(2)} / ` +
-        `変更ファイル読了 ${breakdown.readCoverage.toFixed(2)} / ` +
+        `${coverageLabel(breakdown.coverageKind)} ${breakdown.readCoverage.toFixed(2)} / ` +
         `出典の密度 ${breakdown.citationDensity.toFixed(2)} / ` +
         `確定度 ${breakdown.determinacy.toFixed(2)}`,
     );

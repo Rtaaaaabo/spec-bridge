@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { maskToken } from "./checkout.ts";
+import { maskToken, parseRepoFromRemoteUrl } from "./checkout.ts";
 
 /**
  * クローン URL にトークンを埋め込んでいるため、git の失敗メッセージが
@@ -44,4 +44,29 @@ test("トークンらしき文字列が改行を跨いでも巻き込まない",
 
 test("空文字でも落ちない", () => {
   assert.equal(maskToken(""), "");
+});
+
+// --- リポジトリ名の推測（バックフィルの出典の帰属先になる） ---
+
+test("各種の remote URL から org/repo を取り出せる", () => {
+  const cases: Array<[string, string]> = [
+    ["https://github.com/acme/backend.git", "acme/backend"],
+    ["https://github.com/acme/backend", "acme/backend"],
+    ["https://github.com/acme/backend/", "acme/backend"],
+    ["git@github.com:acme/backend.git", "acme/backend"],
+    ["git@github.com:acme/backend", "acme/backend"],
+    ["ssh://git@github.com/acme/backend.git", "acme/backend"],
+    ["https://x-access-token:secret@github.com/acme/backend.git", "acme/backend"],
+    // git が返す出力には改行が付く
+    ["https://github.com/acme/backend.git\n", "acme/backend"],
+  ];
+  for (const [url, expected] of cases) {
+    assert.equal(parseRepoFromRemoteUrl(url), expected, `解釈に失敗: ${url}`);
+  }
+});
+
+test("GitHub 以外や解釈できない URL は null を返す（誤った帰属先を作らない）", () => {
+  for (const url of ["", "not a url", "https://gitlab.com/acme/backend.git"]) {
+    assert.equal(parseRepoFromRemoteUrl(url), null, `null を返すべき: ${url}`);
+  }
 });

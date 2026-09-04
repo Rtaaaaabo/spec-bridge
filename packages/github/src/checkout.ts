@@ -70,3 +70,28 @@ export async function checkoutForAnalysis(options: CheckoutOptions): Promise<Che
 
   return { path: dir, cleanup };
 }
+
+/**
+ * git remote の URL から `org/repo` を取り出す。
+ *
+ * バックフィルはローカルのチェックアウトを起点にするので、PR と違って
+ * リポジトリ名がどこにも書かれていない。出典の帰属先になる重要な値なので、
+ * 推測を間違えるとマルチリポジトリの保護（`preserveForeign`）が誤動作する。
+ */
+export function parseRepoFromRemoteUrl(url: string): string | null {
+  const trimmed = url.trim();
+  // https://github.com/org/repo(.git) / git@github.com:org/repo(.git) / ssh://git@github.com/org/repo
+  const match = trimmed.match(/(?:github\.com[/:])([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
+  if (!match?.[1] || !match[2]) return null;
+  return `${match[1]}/${match[2]}`;
+}
+
+/** ローカルチェックアウトの origin から `org/repo` を推測する */
+export async function detectRepoName(repoPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await run("git", ["-C", repoPath, "remote", "get-url", "origin"]);
+    return parseRepoFromRemoteUrl(stdout);
+  } catch {
+    return null;
+  }
+}

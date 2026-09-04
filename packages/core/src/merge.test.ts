@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AnalyzeOutput } from "./analyze.ts";
 import { mergeAnalysis } from "./merge.ts";
-import type { FeatureDoc, PullRequestInput } from "./types.ts";
+import {
+  backfillSource,
+  sourceFromPullRequest,
+  type FeatureDoc,
+  type PullRequestInput,
+} from "./types.ts";
 
 const pr: PullRequestInput = {
   repo: "acme/backend",
@@ -14,6 +19,8 @@ const pr: PullRequestInput = {
   mergedAt: "2026-07-29T00:00:00Z",
   changedFiles: [],
 };
+
+const source = sourceFromPullRequest(pr);
 
 function analysis(overrides: Partial<AnalyzeOutput["body"]> = {}): AnalyzeOutput {
   return {
@@ -50,7 +57,7 @@ test("出典のない仕様項目は書き出さず、警告を返す", () => {
       { text: "根拠なし", sources: [] as never },
     ],
   });
-  const { doc, warnings } = mergeAnalysis(null, input, pr, "sample", []);
+  const { doc, warnings } = mergeAnalysis(null, input, source, "sample", []);
 
   assert.equal(doc.body.rules.length, 1);
   assert.equal(doc.body.rules[0]?.text, "根拠あり");
@@ -73,7 +80,7 @@ test("レビュー済みのドキュメントは自動更新で draft に戻る"
     changelog: [],
   };
 
-  const { doc, warnings } = mergeAnalysis(existing, analysis(), pr, "sample", []);
+  const { doc, warnings } = mergeAnalysis(existing, analysis(), source, "sample", []);
 
   assert.equal(doc.meta.status, "draft");
   assert.ok(warnings.some((w) => w.kind === "status-demoted"));
@@ -95,7 +102,7 @@ test("変更履歴はツール側が積む（LLM の出力に依存しない）"
     changelog: [{ date: "2026-07-01", summary: "初版", pr: "acme/backend#1" }],
   };
 
-  const { doc } = mergeAnalysis(existing, analysis(), pr, "sample", []);
+  const { doc } = mergeAnalysis(existing, analysis(), source, "sample", []);
 
   assert.equal(doc.changelog.length, 2);
   assert.equal(doc.changelog[1]?.summary, "上限を3→5に変更");
@@ -108,14 +115,14 @@ test("repo が省略された項目は PR のリポジトリで補完される",
     screens: [{ name: "画面", path: "/x", repo: "", file: null, description: "" }],
     endpoints: [{ method: "GET", path: "/api/x", repo: "", file: null, description: "" }],
   });
-  const { doc } = mergeAnalysis(null, input, pr, "sample", []);
+  const { doc } = mergeAnalysis(null, input, source, "sample", []);
 
   assert.equal(doc.body.screens[0]?.repo, "acme/backend");
   assert.equal(doc.body.endpoints[0]?.repo, "acme/backend");
 });
 
 test("出典の pr が未指定なら解析元の PR で埋まる", () => {
-  const { doc } = mergeAnalysis(null, analysis(), pr, "sample", []);
+  const { doc } = mergeAnalysis(null, analysis(), source, "sample", []);
   assert.equal(doc.body.rules[0]?.sources[0]?.pr, "acme/backend#7");
 });
 
@@ -139,7 +146,7 @@ test("仕様項目が大幅に減った場合は警告する（既存記述の�
     changelog: [],
   };
 
-  const { warnings } = mergeAnalysis(existing, analysis(), pr, "sample", []);
+  const { warnings } = mergeAnalysis(existing, analysis(), source, "sample", []);
   assert.ok(warnings.some((w) => w.kind === "content-shrunk"));
 });
 
@@ -159,7 +166,7 @@ test("課題キーとリポジトリは既存分とマージされ重複しな�
     changelog: [],
   };
 
-  const { doc } = mergeAnalysis(existing, analysis(), pr, "sample", ["PROJ-1", "PROJ-2"]);
+  const { doc } = mergeAnalysis(existing, analysis(), source, "sample", ["PROJ-1", "PROJ-2"]);
 
   assert.deepEqual(doc.meta.repos, ["acme/backend", "acme/frontend"]);
   assert.deepEqual(doc.meta.issueKeys, ["PROJ-1", "PROJ-2"]);
@@ -202,7 +209,7 @@ const feDoc = (): FeatureDoc => ({
 
 test("他リポジトリ由来の記述は、今回検証できなくても引き継がれる", () => {
   // フロント由来のドキュメントに、バックエンドの PR を適用する
-  const { doc, warnings } = mergeAnalysis(feDoc(), analysis(), pr, "sample", []);
+  const { doc, warnings } = mergeAnalysis(feDoc(), analysis(), source, "sample", []);
 
   const texts = doc.body.rules.map((r) => r.text);
   assert.ok(texts.includes("公開範囲セレクトの初期値は「全員」。"), "FE 由来の仕様が消えた");
@@ -224,7 +231,7 @@ test("同じリポジトリの記述は引き継がず、解析結果で置き�
   existing.body.screens = [];
   existing.body.permissions = [];
 
-  const { doc } = mergeAnalysis(existing, analysis(), pr, "sample", []);
+  const { doc } = mergeAnalysis(existing, analysis(), source, "sample", []);
 
   const texts = doc.body.rules.map((r) => r.text);
   assert.ok(texts.includes("上限は5回。"), "更新後の仕様がない");
@@ -244,7 +251,7 @@ test("引き継ぎで重複を作らない（エージェントが既存記述�
     ],
   });
 
-  const { doc } = mergeAnalysis(existing, reemitted, pr, "sample", []);
+  const { doc } = mergeAnalysis(existing, reemitted, source, "sample", []);
 
   const occurrences = doc.body.rules.filter(
     (r) => r.text === "公開範囲セレクトの初期値は「全員」。",
@@ -266,6 +273,74 @@ test("前後の空白や改行の差は同一とみなす", () => {
     ],
   });
 
-  const { doc } = mergeAnalysis(existing, reemitted, pr, "sample", []);
+  const { doc } = mergeAnalysis(existing, reemitted, source, "sample", []);
   assert.equal(doc.body.rules.length, 1);
+});
+
+// --- バックフィル（PR に紐づかない解析） ---
+
+test("バックフィルは存在しない PR 参照を作らない", () => {
+  const { doc } = mergeAnalysis(null, analysis(), backfillSource("acme/backend"), "sample", []);
+
+  assert.equal(doc.changelog[0]?.pr, null, "PR が無いのに参照が作られている");
+  assert.deepEqual(doc.meta.updatedByPRs, [], "PR が無いのに updatedByPRs に積まれている");
+  assert.equal(
+    doc.body.rules[0]?.sources[0]?.pr,
+    null,
+    "出典の pr が実在しない参照で埋まっている",
+  );
+});
+
+test("バックフィルでも repo の補完とリポジトリ記録は効く", () => {
+  const input = analysis({
+    screens: [{ name: "画面", path: "/x", repo: "", file: null, description: "" }],
+  });
+  const { doc } = mergeAnalysis(null, input, backfillSource("acme/backend"), "sample", []);
+
+  assert.equal(doc.body.screens[0]?.repo, "acme/backend");
+  assert.deepEqual(doc.meta.repos, ["acme/backend"]);
+});
+
+test("バックフィルでも他リポジトリ由来の記述は引き継がれる", () => {
+  const { doc, warnings } = mergeAnalysis(
+    feDoc(),
+    analysis(),
+    backfillSource("acme/backend"),
+    "sample",
+    [],
+  );
+
+  const texts = doc.body.rules.map((r) => r.text);
+  assert.ok(texts.includes("公開範囲セレクトの初期値は「全員」。"), "FE 由来の仕様が消えた");
+  assert.ok(warnings.some((w) => w.kind === "foreign-records-restored"));
+});
+
+test("要約が空なら出所ごとの既定文言で埋める（変更履歴を空にしない）", () => {
+  const empty = { ...analysis(), changeSummary: "" };
+
+  const backfilled = mergeAnalysis(null, empty, backfillSource("acme/backend"), "sample", []);
+  assert.equal(backfilled.doc.changelog[0]?.summary, "既存のコードから初版を生成");
+
+  const fromPr = mergeAnalysis(null, empty, source, "sample", []);
+  assert.equal(fromPr.doc.changelog[0]?.summary, "feat: 何か");
+});
+
+test("出典のない仕様項目はバックフィルでも書き出さない（不変条件1）", () => {
+  const input = analysis({
+    rules: [
+      { text: "根拠あり", sources: [{ repo: "acme/backend", file: "a.ts", line: 1, pr: null }] },
+      { text: "根拠なし", sources: [] as never },
+    ],
+  });
+  const { doc, warnings } = mergeAnalysis(
+    null,
+    input,
+    backfillSource("acme/backend"),
+    "sample",
+    [],
+  );
+
+  assert.equal(doc.body.rules.length, 1);
+  assert.equal(doc.body.rules[0]?.text, "根拠あり");
+  assert.ok(warnings.some((w) => w.kind === "rule-without-source"));
 });

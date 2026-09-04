@@ -10,3 +10,4 @@ export * from "./pr-body.ts";
 export * from "./pipeline.ts";
 export * from "./select-docs.ts";
 export * from "./ask.ts";
+export * from "./survey.ts";

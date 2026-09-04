@@ -158,6 +158,45 @@ export const FeatureDoc = z.object({
 });
 export type FeatureDoc = z.infer<typeof FeatureDoc>;
 
+/**
+ * 解析のきっかけ。マージ層はこれだけを見る。
+ *
+ * PR 単位の解析とバックフィル（既存コードからの一括生成）で、変更履歴に積む内容も
+ * 出典に補う PR 参照も変わる。マージ層が `PullRequestInput` を直接受け取っていると
+ * 「PR が存在しない」経路を表現できないので、ここで一段抽象化する。
+ */
+export interface ChangeSource {
+  kind: "pull-request" | "backfill";
+  /** `org/repo` */
+  repo: string;
+  /** `org/repo#123`。バックフィルは PR に紐づかないので null */
+  ref: string | null;
+  /** YYYY-MM-DD。null なら書き出し時点の日付を使う */
+  date: string | null;
+  /** 変更履歴に積む既定の文言。解析結果に要約がなければこれを使う */
+  fallbackSummary: string;
+}
+
+export function sourceFromPullRequest(pr: PullRequestInput): ChangeSource {
+  return {
+    kind: "pull-request",
+    repo: pr.repo,
+    ref: `${pr.repo}#${pr.number}`,
+    date: pr.mergedAt?.slice(0, 10) ?? null,
+    fallbackSummary: pr.title,
+  };
+}
+
+export function backfillSource(repo: string): ChangeSource {
+  return {
+    kind: "backfill",
+    repo,
+    ref: null,
+    date: null,
+    fallbackSummary: "既存のコードから初版を生成",
+  };
+}
+
 /** PR 解析の入力 */
 export interface PullRequestInput {
   repo: string;

@@ -44,6 +44,13 @@ The prompts instruct the agent not to fill gaps with guesses. If you change a pr
 `openQuestions` still gets populated and that `verdict: "unknown"` still comes back for questions the
 documents can't answer.
 
+**When you add a confidence signal, think hard about its value when the signal cannot be measured.**
+`computeReadCoverage` returns 1 (full marks) for an empty changed-file list. That is reasonable when a
+pull request exists, but reusing it for backfill hands out full marks to an agent that read nothing —
+which destroys the ability to say "I don't know". That is why `ConfidenceInput.changedFiles` represents
+"no pull request" as `null` rather than an empty array, and switches the metric itself (`confidence.ts`).
+Defaulting an unmeasurable signal to 0 rather than 1 is what keeps this invariant intact.
+
 ### 3. Markdown rendering stays deterministic
 
 Identical input must always produce identical bytes. Once diffs in the docs repository become noisy,

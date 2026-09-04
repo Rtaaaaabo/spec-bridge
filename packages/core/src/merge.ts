@@ -1,5 +1,5 @@
 import type { AnalyzeOutput } from "./analyze.ts";
-import type { FeatureDoc, FeatureDocBody, PullRequestInput } from "./types.ts";
+import type { ChangeSource, FeatureDoc, FeatureDocBody } from "./types.ts";
 
 export interface MergeWarning {
   kind:
@@ -28,7 +28,7 @@ function normalize(text: string): string {
 }
 
 /**
- * 今回の PR のリポジトリでは検証できなかった記述を、既存ドキュメントから引き継ぐ。
+ * 今回解析したリポジトリでは検証できなかった記述を、既存ドキュメントから引き継ぐ。
  *
  * バックエンドとフロントエンドが別リポジトリのチームでは、フロントの PR を解析するエージェントは
  * バックエンドのコードを読めない。読めなかった記述を落とされるとドキュメントが痩せていくので、
@@ -70,12 +70,12 @@ function foreignBySources(ownRepo: string) {
 export function mergeAnalysis(
   existing: FeatureDoc | null,
   analysis: AnalyzeOutput,
-  pr: PullRequestInput,
+  source: ChangeSource,
   targetId: string,
   issueKeys: string[],
 ): MergeResult {
   const warnings: MergeWarning[] = [];
-  const prRef = `${pr.repo}#${pr.number}`;
+  const prRef = source.ref;
 
   const rules = analysis.body.rules.filter((rule) => {
     if (rule.sources.length === 0) {
@@ -88,16 +88,17 @@ export function mergeAnalysis(
     return true;
   });
 
-  // 単一リポジトリのプロジェクトでは repo が省略されがちなので、PR のリポジトリで補う
+  // 単一リポジトリのプロジェクトでは repo が省略されがちなので、解析元のリポジトリで補う
   const fill = <T extends { repo: string }>(item: T): T =>
-    item.repo ? item : { ...item, repo: pr.repo };
+    item.repo ? item : { ...item, repo: source.repo };
   const fillSources = <T extends { sources: Array<{ repo: string; pr: string | null }> }>(
     item: T,
   ): T => ({
     ...item,
     sources: item.sources.map((s) => ({
       ...s,
-      repo: s.repo || pr.repo,
+      repo: s.repo || source.repo,
+      // バックフィルには紐づく PR が無い。存在しない参照を作らず null のままにする
       pr: s.pr ?? prRef,
     })),
   });
@@ -112,8 +113,8 @@ export function mergeAnalysis(
   };
 
   const prev = existing?.body;
-  const byRepo = foreignByRepo(pr.repo);
-  const bySources = foreignBySources(pr.repo);
+  const byRepo = foreignByRepo(source.repo);
+  const bySources = foreignBySources(source.repo);
 
   const mergedRules = preserveForeign(
     filled.rules,
@@ -158,7 +159,7 @@ export function mergeAnalysis(
       kind: "foreign-records-restored",
       detail:
         `他リポジトリ由来の記述 ${restored} 件を既存ドキュメントから引き継ぎました` +
-        `（今回の PR は ${pr.repo} のため検証できていません）。`,
+        `（今回の解析対象は ${source.repo} のため検証できていません）。`,
     });
   }
 
@@ -196,18 +197,19 @@ export function mergeAnalysis(
       id: targetId,
       status: "draft",
       owners: existing?.meta.owners ?? [],
-      repos: unique([...(existing?.meta.repos ?? []), pr.repo]),
+      repos: unique([...(existing?.meta.repos ?? []), source.repo]),
       issueKeys: unique([...(existing?.meta.issueKeys ?? []), ...issueKeys]),
       updatedAt: today(),
-      updatedByPRs: unique([...(existing?.meta.updatedByPRs ?? []), prRef]).slice(-20),
+      // `unique` は falsy を落とすので、ref が null のバックフィルでは何も積まれない
+      updatedByPRs: unique([...(existing?.meta.updatedByPRs ?? []), prRef ?? ""]).slice(-20),
       confidence: analysis.confidence,
     },
     body,
     changelog: [
       ...(existing?.changelog ?? []),
       {
-        date: pr.mergedAt?.slice(0, 10) ?? today(),
-        summary: analysis.changeSummary,
+        date: source.date ?? today(),
+        summary: analysis.changeSummary || source.fallbackSummary,
         pr: prRef,
       },
     ],

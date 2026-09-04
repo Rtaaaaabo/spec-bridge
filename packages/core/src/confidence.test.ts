@@ -233,3 +233,98 @@ test("確度の計算でも他リポジトリの出典は対象外にする", ()
   assert.equal(check.total, 1);
   assert.equal(check.valid, 1);
 });
+
+// --- バックフィル（PR が無い解析） ---
+//
+// 実装前にコードを読んで見つかった穴の回帰固定。
+// `changedFiles` を空配列として渡すと読了率が 1（満点）になるため、
+// PR を持たないバックフィルでは何も読まなくても配点 0.25 が無条件で入っていた。
+
+test("PR が無い解析では、何も読んでいなければ読了率は満点にならない", () => {
+  const repo = fixtureRepo();
+  const result = computeConfidence({
+    body: body(),
+    repoPath: repo,
+    currentRepo: "a/b",
+    changedFiles: null, // ← バックフィル
+    filesRead: [],
+    selfReported: 0.9,
+  });
+
+  assert.equal(result.coverageKind, "cited-files");
+  assert.equal(result.readCoverage, 0, "何も読まずに満点が入っている");
+});
+
+test("PR が無い解析では、出典に挙げたファイルを実際に読んでいれば読了率が上がる", () => {
+  const repo = fixtureRepo();
+  const result = computeConfidence({
+    body: body(),
+    repoPath: repo,
+    currentRepo: "a/b",
+    changedFiles: null,
+    filesRead: ["src/a.ts"],
+    selfReported: 0.5,
+  });
+  assert.equal(result.readCoverage, 1);
+});
+
+test("読まずに挙げた出典は、ファイルが実在していても読了率を下げる", () => {
+  // sourceValidity は「ファイルが実在するか」しか見ないので、
+  // 実在するファイルを読まずに出典として挙げるケースを検出できない。
+  const repo = fixtureRepo();
+  const input = body({
+    rules: [
+      {
+        text: "2ファイルを根拠にしている",
+        sources: [
+          { repo: "a/b", file: "src/a.ts", line: 1, pr: null },
+          { repo: "a/b", file: "src/b.ts", line: 1, pr: null },
+        ],
+      },
+    ],
+  });
+
+  const base = {
+    body: input,
+    repoPath: repo,
+    currentRepo: "a/b",
+    changedFiles: null,
+    selfReported: 0.9,
+  } as const;
+
+  const readBoth = computeConfidence({ ...base, filesRead: ["src/a.ts", "src/b.ts"] });
+  const readOne = computeConfidence({ ...base, filesRead: ["src/a.ts"] });
+
+  // どちらも出典は実在するので sourceValidity は同じ。差が出るのは読了率だけ。
+  assert.equal(readBoth.sourceValidity, readOne.sourceValidity);
+  assert.equal(readBoth.readCoverage, 1);
+  assert.equal(readOne.readCoverage, 0.5);
+  assert.ok(readBoth.score > readOne.score);
+});
+
+test("PR が無い解析で出典が1件も無ければ、確度は 0 になる", () => {
+  const repo = fixtureRepo();
+  const result = computeConfidence({
+    body: body({ rules: [], openQuestions: [] }),
+    repoPath: repo,
+    currentRepo: "a/b",
+    changedFiles: null,
+    filesRead: ["src/a.ts", "src/b.ts"],
+    selfReported: 1,
+  });
+  assert.equal(result.score, 0, "根拠が1件も無いのに確度がついている");
+});
+
+test("PR 解析の読了率の意味は変えていない（空の変更ファイルは従来どおり満点）", () => {
+  const repo = fixtureRepo();
+  const result = computeConfidence({
+    body: body(),
+    repoPath: repo,
+    currentRepo: "a/b",
+    changedFiles: [], // PR はあるが変更ファイルが取れなかった
+    filesRead: [],
+    selfReported: 0.5,
+  });
+  assert.equal(result.coverageKind, "changed-files");
+  assert.equal(result.readCoverage, 1);
+});
