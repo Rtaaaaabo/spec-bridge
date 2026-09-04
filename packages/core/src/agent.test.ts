@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { extractJson, READ_ONLY_DENY_LIST } from "./agent.ts";
+import { extractJson, NO_TOOLS_DENY_LIST, READ_ONLY_DENY_LIST } from "./agent.ts";
 
 /**
  * `extractJson` は LLM の出力から JSON を取り出す、全処理の入口。
@@ -64,6 +64,37 @@ test("書き込み系とネットワーク系のツールが拒否リストに�
     assert.ok(
       (READ_ONLY_DENY_LIST as readonly string[]).includes(tool),
       `${tool} が拒否リストから外れている`,
+    );
+  }
+});
+
+// --- 不変条件4: 実際に効くのは disallowedTools だけ ---
+
+test("書き込み・ネットワーク系は常に禁止リストに含まれる", () => {
+  for (const tool of ["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch"]) {
+    assert.ok(
+      (READ_ONLY_DENY_LIST as readonly string[]).includes(tool),
+      `${tool} が禁止リストから外れている`,
+    );
+  }
+});
+
+test("プロンプトだけで判断するエージェントは探索系も禁止される", () => {
+  // これらは索引や本文をプロンプトで受け取るのでファイルを読む必要がない。
+  // Bash を残すと、そこから書き込みにもネットワークにも到達できてしまう。
+  for (const tool of ["Bash", "Read", "Grep", "Glob"]) {
+    assert.ok(
+      (NO_TOOLS_DENY_LIST as readonly string[]).includes(tool),
+      `${tool} が禁止リストから外れている`,
+    );
+  }
+});
+
+test("NO_TOOLS_DENY_LIST は READ_ONLY_DENY_LIST を包含する", () => {
+  for (const tool of READ_ONLY_DENY_LIST) {
+    assert.ok(
+      (NO_TOOLS_DENY_LIST as readonly string[]).includes(tool),
+      `${tool} が包含されていない`,
     );
   }
 });

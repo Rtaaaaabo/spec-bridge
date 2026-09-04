@@ -39,6 +39,20 @@ export const READ_ONLY_DENY_LIST = [
 ] as const;
 
 /**
+ * プロンプトに与えた情報だけで判断させるエージェント（分類・絞り込み・回答）に渡す禁止リスト。
+ *
+ * これらはファイルを読む必要がない。`READ_ONLY_DENY_LIST` だけだと Bash が残り、
+ * そこから書き込みもネットワークも到達できてしまうので、探索系ごと落とす。
+ */
+export const NO_TOOLS_DENY_LIST = [
+  ...READ_ONLY_DENY_LIST,
+  "Bash",
+  "Read",
+  "Grep",
+  "Glob",
+] as const;
+
+/**
  * Claude Agent SDK を1往復動かして最終テキストを返す。
  *
  * 認証は Agent SDK に任せている（ANTHROPIC_API_KEY があればそれを、

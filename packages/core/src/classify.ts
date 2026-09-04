@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { extractJson, runAgent, READ_ONLY_DENY_LIST } from "./agent.ts";
+import { extractJson, runAgent, NO_TOOLS_DENY_LIST } from "./agent.ts";
 import type { FeatureDocIndexEntry, PullRequestInput } from "./types.ts";
 
 export const ClassifyResult = z.object({
@@ -112,7 +112,7 @@ export async function classifyPullRequest(
     model: options.model ?? process.env.SPEC_BRIDGE_CLASSIFY_MODEL,
     // 分類はファイルを読む必要がないので、読み取り系も含めて全面的に禁止する
     allowedTools: [],
-    disallowedTools: [...READ_ONLY_DENY_LIST, "Bash", "Read", "Grep", "Glob"],
+    disallowedTools: [...NO_TOOLS_DENY_LIST],
     maxTurns: 2,
     onProgress: options.onProgress,
   });

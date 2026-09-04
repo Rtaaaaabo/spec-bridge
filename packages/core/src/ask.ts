@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { extractJson, runAgent, READ_ONLY_DENY_LIST } from "./agent.ts";
+import { extractJson, runAgent, NO_TOOLS_DENY_LIST } from "./agent.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { selectRelevantDocs } from "./select-docs.ts";
 import { DocStore } from "./store.ts";
@@ -180,7 +180,7 @@ export async function askSupportQuestion(
     model: options.model ?? process.env.SPEC_BRIDGE_ASK_MODEL,
     allowedTools: [],
     // 与えられたドキュメントだけで答えさせる。ファイルもネットワークも触らせない。
-    disallowedTools: [...READ_ONLY_DENY_LIST, "Bash", "Read", "Grep", "Glob"],
+    disallowedTools: [...NO_TOOLS_DENY_LIST],
     maxTurns: 2,
   });
 

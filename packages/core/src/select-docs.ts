@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { extractJson, runAgent } from "./agent.ts";
+import { extractJson, runAgent, NO_TOOLS_DENY_LIST } from "./agent.ts";
 import type { FeatureDoc } from "./types.ts";
 
 /**
@@ -89,7 +89,10 @@ export async function selectRelevantDocs(
       question,
     ].join("\n"),
     model: options.model ?? process.env.SPEC_BRIDGE_SELECT_MODEL ?? "claude-sonnet-5",
+    // 索引はプロンプトで渡すので、ファイルを読む必要はない。
+    // 省略すると既定の READ_ONLY_DENY_LIST だけになり Bash が残る（不変条件4）
     allowedTools: [],
+    disallowedTools: [...NO_TOOLS_DENY_LIST],
     maxTurns: 2,
   });
 
