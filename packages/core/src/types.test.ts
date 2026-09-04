@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FeatureDocBody, SourceRef } from "./types.ts";
+import { FeatureDocBody, FeatureDocMeta, SourceRef, isValidDocId } from "./types.ts";
 
 /**
  * LLM は指示どおりの形で返さないことがある。
@@ -74,4 +74,48 @@ test("仕様項目は出典なしでは受け付けない（サービスの生�
     rules: [{ text: "根拠のない断定", sources: [] }],
   });
   assert.equal(result.success, false);
+});
+
+// --- ドキュメント ID（そのままファイル名になるので契約として縛る） ---
+
+test("スキーマがドキュメント ID の形を強制する", () => {
+  const base = {
+    id: "payment-retry",
+    status: "draft",
+    owners: [],
+    repos: [],
+    issueKeys: [],
+    updatedAt: "2026-08-11",
+    updatedByPRs: [],
+    confidence: 0.5,
+  };
+
+  assert.ok(FeatureDocMeta.safeParse(base).success, "通常の ID が弾かれた");
+
+  for (const id of ["../../escaped", "a/b", "a\\b", "..", ".hidden", ""]) {
+    assert.equal(
+      FeatureDocMeta.safeParse({ ...base, id }).success,
+      false,
+      `弾かれなければならない ID: ${JSON.stringify(id)}`,
+    );
+  }
+});
+
+test("isValidDocId とスキーマの判定が一致する", () => {
+  const base = {
+    status: "draft",
+    owners: [],
+    repos: [],
+    issueKeys: [],
+    updatedAt: "2026-08-11",
+    updatedByPRs: [],
+    confidence: 0.5,
+  };
+  for (const id of ["ok", "with-hyphen", "with_underscore", "v1.2", "../x", "a/b", "", "."]) {
+    assert.equal(
+      isValidDocId(id),
+      FeatureDocMeta.safeParse({ ...base, id }).success,
+      `判定がずれている: ${JSON.stringify(id)}`,
+    );
+  }
 });

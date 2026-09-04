@@ -1,7 +1,7 @@
 import { readdir, readFile, mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { parseDocFile, renderDocFile } from "./markdown.ts";
-import type { FeatureDoc, FeatureDocIndexEntry } from "./types.ts";
+import { isValidDocId, type FeatureDoc, type FeatureDocIndexEntry } from "./types.ts";
 
 /**
  * docs リポジトリ（またはローカルディレクトリ）上の機能ドキュメント置き場。
@@ -14,7 +14,20 @@ export class DocStore {
     return join(this.root, "features");
   }
 
+  /**
+   * ID からファイルパスを組み立てる。**書き込み先を決める唯一の場所。**
+   *
+   * ID は LLM が決めた値なので、ここで必ず検証する。スキーマ側でも弾いているが、
+   * `FeatureDoc` を経由せず ID 文字列だけで呼ばれる経路（`get`）があるため、
+   * パスを作る側にも置いて二重にする。
+   */
   private pathFor(id: string): string {
+    if (!isValidDocId(id)) {
+      throw new Error(
+        `ドキュメント ID として使えない値です: ${JSON.stringify(id)}\n` +
+          `英数字で始まり、英数字・ハイフン・アンダースコア・ドットのみ（100文字以内）が使えます。`,
+      );
+    }
     return join(this.featuresDir, `${id}.md`);
   }
 
@@ -61,8 +74,9 @@ export class DocStore {
   }
 
   async save(doc: FeatureDoc): Promise<string> {
-    await mkdir(this.featuresDir, { recursive: true });
+    // 検証はディスクを触る前に。不正な ID で呼ばれたときに痕跡を残さない
     const path = this.pathFor(doc.meta.id);
+    await mkdir(this.featuresDir, { recursive: true });
     await writeFile(path, renderDocFile(doc), "utf8");
     return path;
   }

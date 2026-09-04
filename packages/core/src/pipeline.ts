@@ -6,6 +6,7 @@ import { DocStore } from "./store.ts";
 import { surveyFeatures } from "./survey.ts";
 import {
   backfillSource,
+  isValidDocId,
   sourceFromPullRequest,
   type PullRequestInput,
 } from "./types.ts";
@@ -69,6 +70,11 @@ export async function runPipeline(
     const id = target.docId ?? target.newDocId;
     if (!id) {
       failures.push({ id: target.title, error: "docId と newDocId の両方が null でした" });
+      continue;
+    }
+    // 保存時にも弾かれるが、そこまで行くと数分の解析が無駄になる
+    if (!isValidDocId(id)) {
+      failures.push({ id, error: `ID に使えない文字が含まれています: ${JSON.stringify(id)}` });
       continue;
     }
 

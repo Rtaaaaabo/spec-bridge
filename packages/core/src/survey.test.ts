@@ -126,3 +126,26 @@ test("上限ちょうどなら切り捨ての警告は出さない", () => {
   assert.equal(features.length, 3);
   assert.deepEqual(warnings, []);
 });
+
+test("ID に区切り文字が混ざった項目は落とす（解析を走らせる前に弾く）", () => {
+  const repo = fixtureRepo();
+  const { features, warnings } = normalizeSurvey(
+    [feature({ newDocId: "../../escaped" }), feature({ newDocId: "post-visibility" })],
+    repo,
+    20,
+  );
+
+  assert.equal(features.length, 1);
+  assert.equal(features[0]?.newDocId, "post-visibility");
+  assert.ok(warnings.some((w) => w.includes("ID に使えない文字")));
+});
+
+test("既存ドキュメント側の docId も検証する", () => {
+  const repo = fixtureRepo();
+  const { features } = normalizeSurvey(
+    [feature({ docId: "../../escaped", newDocId: null })],
+    repo,
+    20,
+  );
+  assert.equal(features.length, 0);
+});

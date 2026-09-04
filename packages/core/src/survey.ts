@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { extractJson, runAgent, READ_ONLY_DENY_LIST } from "./agent.ts";
-import type { FeatureDocIndexEntry } from "./types.ts";
+import { isValidDocId, type FeatureDocIndexEntry } from "./types.ts";
 
 export const SurveyedFeature = z.object({
   docId: z
@@ -166,6 +166,11 @@ export function normalizeSurvey(
     const id = feature.docId ?? feature.newDocId;
     if (!id) {
       warnings.push(`docId と newDocId の両方が null のため除外: "${feature.title}"`);
+      continue;
+    }
+    // 保存時にも弾かれるが、そこまで行くと1件あたり数分の解析が無駄になる
+    if (!isValidDocId(id)) {
+      warnings.push(`ID に使えない文字が含まれるため除外: ${JSON.stringify(id)}`);
       continue;
     }
     if (seen.has(id)) {

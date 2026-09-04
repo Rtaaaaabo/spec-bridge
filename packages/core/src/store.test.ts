@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -121,4 +121,77 @@ test("インデックスページが生成される", async () => {
 
   const readme = await readFile(join(root, "README.md"), "utf8");
   assert.match(readme, /payment-retry/);
+});
+
+// --- パストラバーサル（SaaS 化の調査で実際に脱出できることを確認した箇所） ---
+
+test("ID で docs ディレクトリの外へ書き込めない", async () => {
+  // 脱出先を自分たちだけの領域にするため docs ルートを一段ネストさせる。
+  // 共有の tmpdir を脱出先にすると、他のテストや過去の実行の残骸を拾ってしまう。
+  const sandbox = tempDir();
+  const root = join(sandbox, "docs");
+  const store = new DocStore(root);
+
+  // 修正前は join(featuresDir, "../../escaped.md") が通り、sandbox 直下にファイルができた
+  await assert.rejects(
+    () => store.save(doc("../../escaped")),
+    /使えない値/,
+    "ルート外への書き込みが通ってしまった",
+  );
+
+  assert.equal(
+    existsSync(join(sandbox, "escaped.md")),
+    false,
+    "docs ルートの外にファイルができている",
+  );
+  // 検証はディスクを触る前に行うので、features ディレクトリも作られない
+  assert.equal(existsSync(join(root, "features")), false);
+});
+
+test("区切り文字を含む ID はすべて拒否する", async () => {
+  const store = new DocStore(tempDir());
+  for (const id of [
+    "../escape",
+    "a/b",
+    "a\\b",
+    "/absolute",
+    "..",
+    ".",
+    ".hidden",
+    "",
+    "a".repeat(101),
+  ]) {
+    await assert.rejects(
+      () => store.save(doc(id)),
+      /使えない値/,
+      `拒否されなければならない ID: ${JSON.stringify(id)}`,
+    );
+  }
+});
+
+test("通常の ID は今までどおり保存できる（過剰に厳しくしない）", async () => {
+  const store = new DocStore(tempDir());
+  for (const id of ["payment-retry", "post_visibility", "v1.2", "Feature1", "a"]) {
+    await store.save(doc(id));
+    assert.ok(await store.get(id), `保存できるべき ID が弾かれた: ${id}`);
+  }
+});
+
+test("不正な ID の取得は例外ではなく null（照会は落とさない）", async () => {
+  const store = new DocStore(tempDir());
+  assert.equal(await store.get("../../etc/passwd"), null);
+});
+
+test("手で書き換えて不正な ID にされたファイルは読み飛ばす", async () => {
+  const root = tempDir();
+  const store = new DocStore(root);
+  await store.save(doc("good"));
+
+  // frontmatter の id だけを不正な値に書き換える
+  const path = join(root, "features", "good.md");
+  writeFileSync(path.replace("good.md", "tampered.md"), readFileSync(path, "utf8").replace("id: good", "id: ../../evil"), "utf8");
+
+  const all = await store.list();
+  assert.equal(all.length, 1, "不正な id のファイルが読み込まれてしまっている");
+  assert.equal(all[0]?.meta.id, "good");
 });

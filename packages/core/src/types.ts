@@ -139,8 +139,28 @@ export const FeatureDocBody = z.object({
 });
 export type FeatureDocBody = z.infer<typeof FeatureDocBody>;
 
+/**
+ * 機能ドキュメント ID として許可する形。
+ *
+ * ID はそのままファイル名になる（`features/<id>.md`）ため、`/` や `\` が混ざると
+ * docs ディレクトリの外へ書き込めてしまう。ID の出所は LLM（`classify` の `newDocId`、
+ * `survey` の `newDocId`）なので、**安全な文字だけを通す許可リスト**にする。
+ * 出典パスのように「解決してからルート内か確かめる」方式は、階層を持つパス向けの手段。
+ * ID は階層を持たない識別子なので、そもそも区切り文字を通さないほうが強い。
+ *
+ * 先頭を英数字に限ることで `.` / `..` や隠しファイルも弾ける。
+ */
+export const DOC_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+
+export function isValidDocId(id: string): boolean {
+  return DOC_ID_PATTERN.test(id);
+}
+
 export const FeatureDocMeta = z.object({
-  id: z.string().describe("kebab-case の安定ID"),
+  id: z
+    .string()
+    .regex(DOC_ID_PATTERN, "ID に使えない文字が含まれています（英数字・ハイフン・アンダースコア・ドットのみ）")
+    .describe("kebab-case の安定ID"),
   status: DocStatus.default("draft"),
   owners: z.array(z.string()).default([]),
   repos: z.array(z.string()).default([]),
