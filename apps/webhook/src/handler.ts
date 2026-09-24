@@ -2,8 +2,11 @@ import { readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import {
   DocStore,
+  INDEX_PAGE,
+  QUESTIONS_PAGE,
   buildDocsPullRequestBody,
   buildDocsPullRequestTitle,
+  formatUsageSummary,
   runPipeline,
   type DocChange,
 } from "@spec-bridge/core";
@@ -111,6 +114,7 @@ export async function handleMergedPullRequest(
       docsPath: docsDir,
       log,
     });
+    log(`  ${formatUsageSummary(result.usage)}`);
 
     if (result.skipped) {
       return { status: "skipped", detail: result.classification.reason };
@@ -133,11 +137,10 @@ export async function handleMergedPullRequest(
       });
     }
 
-    // インデックスページも更新する
-    files.push({
-      path: "README.md",
-      content: await readFile(join(docsDir, "README.md"), "utf8"),
-    });
+    // インデックスページと確認事項の一覧も更新する（`writeIndexPage` が一緒に書いている）
+    for (const page of [INDEX_PAGE, QUESTIONS_PAGE]) {
+      files.push({ path: page, content: await readFile(join(docsDir, page), "utf8") });
+    }
 
     const [docsOwner, docsRepoName] = config.docsRepo.split("/");
     if (!docsOwner || !docsRepoName) {

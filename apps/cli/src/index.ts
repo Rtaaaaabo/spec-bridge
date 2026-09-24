@@ -4,7 +4,14 @@ import { dirname, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { coverageLabel, runBackfill, runPipeline, type RunResult } from "@spec-bridge/core";
+import {
+  coverageLabel,
+  formatUsageSummary,
+  runBackfill,
+  runPipeline,
+  type RunResult,
+  type UsageSummary,
+} from "@spec-bridge/core";
 import { detectRepoName, fetchPullRequest, parsePullRequestRef } from "@spec-bridge/github";
 
 /**
@@ -90,6 +97,15 @@ function reportDoc(doc: RunResult["updated"][number]): void {
   }
 }
 
+/** 所要時間と推定コストを表示する。LP や記事に載せる実測値の出どころになる */
+function reportUsage(usage: UsageSummary): void {
+  console.log("");
+  console.log(formatUsageSummary(usage));
+  console.log(
+    "  推定コストは API 料金換算です。Claude のサブスクリプションで認証している場合、実際の請求額とは異なります。",
+  );
+}
+
 /** コマンドラインから受け取った値。`parseArgs` の生の形をコマンド側へ持ち込まない */
 interface CliOptions {
   pr?: string;
@@ -138,12 +154,14 @@ async function runAnalyzeCommand(
     console.log("── 結果 ──");
     console.log(`スキップ: ${result.classification.reason}`);
     console.log("（強制的に解析するには --force を付けてください）");
+    reportUsage(result.usage);
     return 0;
   }
 
   console.log("── 結果 ──");
   for (const doc of result.updated) reportDoc(doc);
   for (const f of result.failures) console.log(`✗ ${f.id}: ${f.error}`);
+  reportUsage(result.usage);
 
   return result.failures.length > 0 ? 1 : 0;
 }
@@ -195,6 +213,7 @@ async function runBackfillCommand(
   console.log("");
   for (const doc of result.updated) reportDoc(doc);
   for (const f of result.failures) console.log(`✗ ${f.id}: ${f.error}`);
+  reportUsage(result.usage);
 
   if (result.updated.length === 0) {
     console.log("生成されたドキュメントはありません。");

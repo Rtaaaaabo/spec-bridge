@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DocStore } from "./store.ts";
+import { DocStore, QUESTIONS_PAGE, renderQuestionsPage } from "./store.ts";
 import type { FeatureDoc } from "./types.ts";
 
 function tempDir(): string {
@@ -121,6 +121,73 @@ test("インデックスページが生成される", async () => {
 
   const readme = await readFile(join(root, "README.md"), "utf8");
   assert.match(readme, /payment-retry/);
+});
+
+function withQuestions(id: string, questions: string[]): FeatureDoc {
+  const d = doc(id);
+  d.body.openQuestions = questions;
+  return d;
+}
+
+test("確認事項が全機能ぶん1ページに集まり、機能ドキュメントへのリンクが付く", async () => {
+  const root = tempDir();
+  const store = new DocStore(root);
+  await store.save(withQuestions("payment-retry", ["再試行の上限は設定で変えられるか"]));
+  await store.save(withQuestions("login", ["SSO 利用時もロックアウトするか", "ロック解除は誰が行うか"]));
+  await store.writeIndexPage();
+
+  const page = await readFile(join(root, QUESTIONS_PAGE), "utf8");
+  assert.match(page, /2 機能・3 件/);
+  assert.match(page, /## \[login の機能\]\(features\/login\.md\)/);
+  assert.match(page, /- \[ \] SSO 利用時もロックアウトするか/);
+  assert.match(page, /- \[ \] 再試行の上限は設定で変えられるか/);
+  // ID 順に並ぶ（決定論的）
+  assert.ok(page.indexOf("login の機能") < page.indexOf("payment-retry の機能"));
+});
+
+test("確認事項のない機能は確認事項ページに載らない", async () => {
+  const root = tempDir();
+  const store = new DocStore(root);
+  await store.save(withQuestions("asked", ["聞きたいこと"]));
+  await store.save(doc("settled"));
+  await store.writeIndexPage();
+
+  const page = await readFile(join(root, QUESTIONS_PAGE), "utf8");
+  assert.match(page, /asked の機能/);
+  assert.doesNotMatch(page, /settled/);
+});
+
+test("確認事項が1件もなければ、そう書く（前回の一覧を残さない）", async () => {
+  const root = tempDir();
+  const store = new DocStore(root);
+  await store.save(withQuestions("payment-retry", ["聞きたいこと"]));
+  await store.writeIndexPage();
+
+  // 確認が取れて確認事項が消えたあとの再生成
+  await store.save(doc("payment-retry"));
+  await store.writeIndexPage();
+
+  const page = await readFile(join(root, QUESTIONS_PAGE), "utf8");
+  assert.match(page, /現在、確認事項はありません/);
+  assert.doesNotMatch(page, /聞きたいこと/);
+});
+
+test("一覧ページに機能ごとの確認事項の件数と、確認事項ページへのリンクが載る", async () => {
+  const root = tempDir();
+  const store = new DocStore(root);
+  await store.save(withQuestions("payment-retry", ["一つ目", "二つ目"]));
+  await store.save(doc("settled"));
+  await store.writeIndexPage();
+
+  const readme = await readFile(join(root, "README.md"), "utf8");
+  assert.ok(readme.includes(`[開発者への確認事項](${QUESTIONS_PAGE}) にまとめています（2 件）`));
+  assert.match(readme, /payment-retry\.md\) \| 📝 AI生成 \| 2 件 \|/);
+  assert.match(readme, /settled\.md\) \| 📝 AI生成 \| — \|/);
+});
+
+test("確認事項ページは同じ入力から同じバイト列になる", () => {
+  const docs = [withQuestions("a", ["x"]), withQuestions("b", ["y", "z"])];
+  assert.equal(renderQuestionsPage(docs), renderQuestionsPage(docs));
 });
 
 // --- パストラバーサル（SaaS 化の調査で実際に脱出できることを確認した箇所） ---

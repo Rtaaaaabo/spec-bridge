@@ -1,4 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { usageFromResult, type AgentUsage } from "./usage.ts";
 
 export interface RunAgentOptions {
   systemPrompt: string;
@@ -13,6 +14,8 @@ export interface RunAgentOptions {
   onProgress?: (line: string) => void;
   /** ツール呼び出しを構造化して観測する。どのファイルを実際に読んだかの計測に使う */
   onToolUse?: (name: string, input: Record<string, unknown>) => void;
+  /** 呼び出し1回ぶんの消費量を受け取る。失敗した呼び出しでも呼ばれる */
+  onUsage?: (usage: AgentUsage) => void;
 }
 
 export interface AgentRun {
@@ -104,6 +107,7 @@ export async function runAgentDetailed(options: RunAgentOptions): Promise<AgentR
     }
 
     if (m.type === "result") {
+      options.onUsage?.(usageFromResult(m));
       if (m.subtype !== "success") {
         throw new Error(`エージェントが失敗しました: ${String(m.subtype)}`);
       }

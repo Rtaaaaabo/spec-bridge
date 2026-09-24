@@ -169,7 +169,12 @@ pnpm analyze \
 ```
 
 `--repo` is a local checkout the agent explores with Read / Grep / Glob. Feature docs are written to
-`--docs` as `features/<id>.md`.
+`--docs` as `features/<id>.md`. The index page `README.md` is regenerated alongside them, together with
+`open-questions.md`, which collects every feature's "questions for the developers" on one page: the points
+the code could not settle and that were deliberately left unguessed.
+
+At the end of a run the CLI prints the elapsed time, the number of agent calls, and an estimated cost.
+The estimate is priced at API rates; if you authenticate with a Claude subscription it is not what you are billed.
 
 | Option | Description |
 | --- | --- |

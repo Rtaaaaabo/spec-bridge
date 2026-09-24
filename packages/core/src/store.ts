@@ -3,9 +3,23 @@ import { join, relative } from "node:path";
 import { parseDocFile, renderDocFile } from "./markdown.ts";
 import { isValidDocId, type FeatureDoc, type FeatureDocIndexEntry } from "./types.ts";
 
+/** 一覧ページのファイル名（docs ルートからの相対パス） */
+export const INDEX_PAGE = "README.md";
+/** 確認事項の横断一覧のファイル名（docs ルートからの相対パス） */
+export const QUESTIONS_PAGE = "open-questions.md";
+
+const STATUS_BADGE: Record<FeatureDoc["meta"]["status"], string> = {
+  verified: "✅ 確認済",
+  draft: "📝 AI生成",
+  stale: "⚠️ 要更新",
+};
+
 /**
  * docs リポジトリ（またはローカルディレクトリ）上の機能ドキュメント置き場。
- * レイアウト: <root>/features/<id>.md
+ * レイアウト:
+ *   <root>/README.md            一覧ページ
+ *   <root>/open-questions.md    開発者への確認事項（全機能ぶん）
+ *   <root>/features/<id>.md     機能ドキュメント
  */
 export class DocStore {
   constructor(private readonly root: string) {}
@@ -81,14 +95,19 @@ export class DocStore {
     return path;
   }
 
-  /** 一覧ページ（README）を再生成する。CS / QA が最初に開く入口。 */
+  /**
+   * 一覧ページ（README）と確認事項の横断一覧を再生成する。CS / QA が最初に開く入口。
+   *
+   * 2つは同じ `list()` から作り、必ず一緒に書く。片方だけ古いと、
+   * 一覧の件数と確認事項ページの中身が食い違う。
+   */
   async writeIndexPage(): Promise<string> {
     const docs = await this.list();
+    const questionCount = docs.reduce((n, d) => n + d.body.openQuestions.length, 0);
+
     const rows = docs.map((d) => {
-      const badge = { verified: "✅ 確認済", draft: "📝 AI生成", stale: "⚠️ 要更新" }[
-        d.meta.status
-      ];
-      return `| [${d.body.title}](features/${d.meta.id}.md) | ${badge} | ${d.meta.repos.map((r) => `\`${r}\``).join(", ")} | ${d.meta.updatedAt} |`;
+      const questions = d.body.openQuestions.length;
+      return `| [${d.body.title}](features/${d.meta.id}.md) | ${STATUS_BADGE[d.meta.status]} | ${questions > 0 ? `${questions} 件` : "—"} | ${d.meta.repos.map((r) => `\`${r}\``).join(", ")} | ${d.meta.updatedAt} |`;
     });
     const content = [
       "# 機能仕様インデックス",
@@ -97,14 +116,54 @@ export class DocStore {
       "spec-bridge がソースコードから自動生成・更新しています。",
       "`📝 AI生成` は未レビューです — 顧客への回答に使う前に開発者の確認を取ってください。",
       "",
-      "| 機能 | ステータス | リポジトリ | 最終更新 |",
-      "| --- | --- | --- | --- |",
+      `コードからは確定できず、開発者への確認が必要な点は [開発者への確認事項](${QUESTIONS_PAGE}) にまとめています（${questionCount} 件）。`,
+      "",
+      "| 機能 | ステータス | 確認事項 | リポジトリ | 最終更新 |",
+      "| --- | --- | --- | --- | --- |",
       ...rows,
       "",
     ].join("\n");
     await mkdir(this.root, { recursive: true });
-    const path = join(this.root, "README.md");
+    const path = join(this.root, INDEX_PAGE);
     await writeFile(path, content, "utf8");
+    await writeFile(join(this.root, QUESTIONS_PAGE), renderQuestionsPage(docs), "utf8");
     return path;
   }
+}
+
+/**
+ * 全機能の `openQuestions` を1ページに集める。
+ *
+ * 機能ドキュメントの中に散らばったままだと、「コードを読んだうえで、人に聞くべきこと」を
+ * 見渡す手段がない。キックオフや引き継ぎの前に、このページだけ開けば済むようにする。
+ *
+ * 入力の並び（`list()` は ID 順）をそのまま使い、日時も埋め込まない。
+ * 同じドキュメント群からは常に同じバイト列が出る（docs リポジトリの diff を汚さない）。
+ */
+export function renderQuestionsPage(docs: FeatureDoc[]): string {
+  const withQuestions = docs.filter((d) => d.body.openQuestions.length > 0);
+  const total = withQuestions.reduce((n, d) => n + d.body.openQuestions.length, 0);
+
+  const lines = ["# 開発者への確認事項", ""];
+  if (total === 0) {
+    lines.push("現在、確認事項はありません。", "");
+    return lines.join("\n");
+  }
+
+  lines.push(
+    `コードからは確定できず、開発者への確認が必要な点を機能ごとにまとめています（${withQuestions.length} 機能・${total} 件）。`,
+    "spec-bridge が推測で埋めずに残した項目です。前後の文脈は、見出しのリンク先の機能ドキュメントを参照してください。",
+    "",
+  );
+  for (const d of withQuestions) {
+    lines.push(
+      `## [${d.body.title}](features/${d.meta.id}.md)`,
+      "",
+      `${STATUS_BADGE[d.meta.status]} · ${d.meta.repos.map((r) => `\`${r}\``).join(", ")}`,
+      "",
+      ...d.body.openQuestions.map((q) => `- [ ] ${q}`),
+      "",
+    );
+  }
+  return lines.join("\n");
 }

@@ -10,6 +10,7 @@ import {
   sourceFromPullRequest,
   type PullRequestInput,
 } from "./types.ts";
+import { UsageTally, type UsageSummary } from "./usage.ts";
 
 export interface RunOptions {
   repoPath: string;
@@ -32,6 +33,8 @@ export interface RunResult {
     openQuestions: string[];
   }>;
   failures: Array<{ id: string; error: string }>;
+  /** 所要時間と推定コスト */
+  usage: UsageSummary;
 }
 
 /**
@@ -45,21 +48,25 @@ export async function runPipeline(
 ): Promise<RunResult> {
   const log = options.log ?? (() => {});
   const store = new DocStore(options.docsPath);
+  const tally = new UsageTally();
 
   log(`▸ 既存ドキュメントを読み込み中: ${options.docsPath}`);
   const index = await store.index();
   log(`  ${index.length} 件の機能ドキュメントを検出`);
 
   log(`▸ この PR が仕様に影響するか分類中…`);
-  const classification = await classifyPullRequest(pr, index, { onProgress: log });
+  const classification = await classifyPullRequest(pr, index, {
+    onProgress: log,
+    onUsage: tally.add,
+  });
   log(`  → ${classification.affectsSpec ? "影響あり" : "影響なし"}: ${classification.reason}`);
 
   if (!classification.affectsSpec && !options.force) {
-    return { skipped: true, classification, updated: [], failures: [] };
+    return { skipped: true, classification, updated: [], failures: [], usage: tally.summary() };
   }
   if (classification.targets.length === 0) {
     log("  対象機能が特定できませんでした。スキップします。");
-    return { skipped: true, classification, updated: [], failures: [] };
+    return { skipped: true, classification, updated: [], failures: [], usage: tally.summary() };
   }
 
   const updated: RunResult["updated"] = [];
@@ -89,6 +96,7 @@ export async function runPipeline(
           repoPath: options.repoPath,
           allowBash: options.allowBash,
           onProgress: log,
+          onUsage: tally.add,
         },
       );
 
@@ -128,7 +136,7 @@ export async function runPipeline(
     log(`▸ インデックスページを更新しました`);
   }
 
-  return { skipped: false, classification, updated, failures };
+  return { skipped: false, classification, updated, failures, usage: tally.summary() };
 }
 
 export interface BackfillOptions {
@@ -150,6 +158,8 @@ export interface BackfillResult {
   surveyWarnings: string[];
   updated: RunResult["updated"];
   failures: RunResult["failures"];
+  /** 所要時間と推定コスト。実測の数字として外に出せるよう、列挙から全件の解析までを含む */
+  usage: UsageSummary;
 }
 
 /**
@@ -167,6 +177,7 @@ export async function runBackfill(options: BackfillOptions): Promise<BackfillRes
   const log = options.log ?? (() => {});
   const store = new DocStore(options.docsPath);
   const source = backfillSource(options.repo);
+  const tally = new UsageTally();
 
   log(`▸ 既存ドキュメントを読み込み中: ${options.docsPath}`);
   const index = await store.index();
@@ -178,6 +189,7 @@ export async function runBackfill(options: BackfillOptions): Promise<BackfillRes
     limit: options.limit,
     allowBash: options.allowBash,
     onProgress: log,
+    onUsage: tally.add,
   });
   log(`  ${survey.features.length} 件の機能を検出`);
   for (const warning of survey.warnings) log(`  ⚠ ${warning}`);
@@ -204,6 +216,7 @@ export async function runBackfill(options: BackfillOptions): Promise<BackfillRes
           repoPath: options.repoPath,
           allowBash: options.allowBash,
           onProgress: log,
+          onUsage: tally.add,
         },
       );
 
@@ -239,5 +252,6 @@ export async function runBackfill(options: BackfillOptions): Promise<BackfillRes
     surveyWarnings: survey.warnings,
     updated,
     failures,
+    usage: tally.summary(),
   };
 }

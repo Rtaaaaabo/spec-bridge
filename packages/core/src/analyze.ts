@@ -2,6 +2,7 @@ import { z } from "zod";
 import { extractJson, runAgent, runAgentDetailed, READ_ONLY_DENY_LIST } from "./agent.ts";
 import { computeConfidence, pruneInvalidSources, type ConfidenceBreakdown } from "./confidence.ts";
 import { FeatureDocBody, type FeatureDoc, type PullRequestInput } from "./types.ts";
+import type { AgentUsage } from "./usage.ts";
 
 export const AnalyzeOutput = z.object({
   changeSummary: z
@@ -123,6 +124,7 @@ export interface AnalyzeOptions {
   /** true にすると Bash を許可し、git log / git show を辿れるようになる */
   allowBash?: boolean;
   onProgress?: (line: string) => void;
+  onUsage?: (usage: AgentUsage) => void;
 }
 
 /** LLM に渡す body の JSON Schema。zod 定義から生成するので、型定義とズレようがない */
@@ -245,6 +247,7 @@ export async function analyzeFeature(
     disallowedTools,
     maxTurns: options.maxTurns ?? 60,
     onProgress: options.onProgress,
+    onUsage: options.onUsage,
   });
   const resultText = run.text;
 
@@ -277,6 +280,7 @@ export async function analyzeFeature(
     allowedTools: [],
     disallowedTools,
     maxTurns: 2,
+    onUsage: options.onUsage,
   });
 
   const second = tryParse(repaired);

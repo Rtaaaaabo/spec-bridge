@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { extractJson, runAgent, READ_ONLY_DENY_LIST } from "./agent.ts";
 import { isValidDocId, type FeatureDocIndexEntry } from "./types.ts";
+import type { AgentUsage } from "./usage.ts";
 
 export const SurveyedFeature = z.object({
   docId: z
@@ -78,6 +79,7 @@ export interface SurveyOptions {
   maxTurns?: number;
   allowBash?: boolean;
   onProgress?: (line: string) => void;
+  onUsage?: (usage: AgentUsage) => void;
 }
 
 export interface SurveyOutcome {
@@ -135,6 +137,7 @@ export async function surveyFeatures(
     disallowedTools,
     maxTurns: options.maxTurns ?? 40,
     onProgress: options.onProgress,
+    onUsage: options.onUsage,
   });
 
   const parsed = SurveyResult.safeParse(extractJson(text));
