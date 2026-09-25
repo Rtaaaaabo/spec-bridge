@@ -1,7 +1,13 @@
 import { readdir, readFile, mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { parseDocFile, renderDocFile } from "./markdown.ts";
-import { isValidDocId, type FeatureDoc, type FeatureDocIndexEntry } from "./types.ts";
+import { formatQuestion, QUESTION_KIND_LABEL, QUESTION_KINDS, questionsOfKind } from "./questions.ts";
+import {
+  isValidDocId,
+  type FeatureDoc,
+  type FeatureDocIndexEntry,
+  type QuestionKind,
+} from "./types.ts";
 
 /** 一覧ページのファイル名（docs ルートからの相対パス） */
 export const INDEX_PAGE = "README.md";
@@ -103,11 +109,12 @@ export class DocStore {
    */
   async writeIndexPage(): Promise<string> {
     const docs = await this.list();
-    const questionCount = docs.reduce((n, d) => n + d.body.openQuestions.length, 0);
+    const counts = countQuestions(docs);
 
+    // 一覧に出す件数は「聞くべきこと」だけ。調べれば埋まるものまで数えると、人に聞く量を水増しして見せる
     const rows = docs.map((d) => {
-      const questions = d.body.openQuestions.length;
-      return `| [${d.body.title}](features/${d.meta.id}.md) | ${STATUS_BADGE[d.meta.status]} | ${questions > 0 ? `${questions} 件` : "—"} | ${d.meta.repos.map((r) => `\`${r}\``).join(", ")} | ${d.meta.updatedAt} |`;
+      const ask = questionsOfKind(d.body.openQuestions, "intent").length;
+      return `| [${d.body.title}](features/${d.meta.id}.md) | ${STATUS_BADGE[d.meta.status]} | ${ask > 0 ? `${ask} 件` : "—"} | ${d.meta.repos.map((r) => `\`${r}\``).join(", ")} | ${d.meta.updatedAt} |`;
     });
     const content = [
       "# 機能仕様インデックス",
@@ -116,9 +123,10 @@ export class DocStore {
       "spec-bridge がソースコードから自動生成・更新しています。",
       "`📝 AI生成` は未レビューです — 顧客への回答に使う前に開発者の確認を取ってください。",
       "",
-      `コードからは確定できず、開発者への確認が必要な点は [開発者への確認事項](${QUESTIONS_PAGE}) にまとめています（${questionCount} 件）。`,
+      `コードを読んだうえで人に確かめるしかない点は [開発者への確認事項](${QUESTIONS_PAGE}) にまとめています` +
+        `（聞くべきこと ${counts.intent} 件。ほかに追加調査 ${counts.unverified} 件・範囲のメモ ${counts.scope} 件）。`,
       "",
-      "| 機能 | ステータス | 確認事項 | リポジトリ | 最終更新 |",
+      "| 機能 | ステータス | 聞くべきこと | リポジトリ | 最終更新 |",
       "| --- | --- | --- | --- | --- |",
       ...rows,
       "",
@@ -131,18 +139,35 @@ export class DocStore {
   }
 }
 
+function countQuestions(docs: FeatureDoc[]): Record<QuestionKind, number> {
+  const counts: Record<QuestionKind, number> = { intent: 0, unverified: 0, scope: 0 };
+  for (const d of docs) for (const q of d.body.openQuestions) counts[q.kind] += 1;
+  return counts;
+}
+
+const KIND_INTRO: Record<QuestionKind, string> = {
+  intent:
+    "コードを探したうえで、意図・運用・外部システムの挙動など、人に確かめるしかない点です。各項目に、答えを探して開いたファイルを添えています。",
+  unverified:
+    "コードを追えば分かるはずで、今回そこまで読めなかった点です。人に聞く前に、もう一度コードを当たってください。",
+  scope: "機能ドキュメントの範囲についての相談です。ドキュメントを保守する人向けのメモです。",
+};
+
 /**
  * 全機能の `openQuestions` を1ページに集める。
  *
  * 機能ドキュメントの中に散らばったままだと、「コードを読んだうえで、人に聞くべきこと」を
  * 見渡す手段がない。キックオフや引き継ぎの前に、このページだけ開けば済むようにする。
  *
+ * 種類ごとに分け、人に聞くべきもの（intent）を先頭に置く。調べれば埋まるもの（unverified）を
+ * 同じ並びに混ぜると、「コードを読めば分かることを聞く」ことになる。
+ *
  * 入力の並び（`list()` は ID 順）をそのまま使い、日時も埋め込まない。
  * 同じドキュメント群からは常に同じバイト列が出る（docs リポジトリの diff を汚さない）。
  */
 export function renderQuestionsPage(docs: FeatureDoc[]): string {
-  const withQuestions = docs.filter((d) => d.body.openQuestions.length > 0);
-  const total = withQuestions.reduce((n, d) => n + d.body.openQuestions.length, 0);
+  const counts = countQuestions(docs);
+  const total = counts.intent + counts.unverified + counts.scope;
 
   const lines = ["# 開発者への確認事項", ""];
   if (total === 0) {
@@ -151,19 +176,26 @@ export function renderQuestionsPage(docs: FeatureDoc[]): string {
   }
 
   lines.push(
-    `コードからは確定できず、開発者への確認が必要な点を機能ごとにまとめています（${withQuestions.length} 機能・${total} 件）。`,
-    "spec-bridge が推測で埋めずに残した項目です。前後の文脈は、見出しのリンク先の機能ドキュメントを参照してください。",
+    `spec-bridge がコードから確定できず、推測で埋めずに残した点を種類ごとにまとめています` +
+      `（聞くべきこと ${counts.intent} 件・追加調査 ${counts.unverified} 件・範囲のメモ ${counts.scope} 件）。`,
+    "前後の文脈は、見出しのリンク先の機能ドキュメントを参照してください。",
     "",
   );
-  for (const d of withQuestions) {
-    lines.push(
-      `## [${d.body.title}](features/${d.meta.id}.md)`,
-      "",
-      `${STATUS_BADGE[d.meta.status]} · ${d.meta.repos.map((r) => `\`${r}\``).join(", ")}`,
-      "",
-      ...d.body.openQuestions.map((q) => `- [ ] ${q}`),
-      "",
-    );
+  for (const kind of QUESTION_KINDS) {
+    if (counts[kind] === 0) continue;
+    lines.push(`## ${QUESTION_KIND_LABEL[kind]}（${counts[kind]} 件）`, "", KIND_INTRO[kind], "");
+    for (const d of docs) {
+      const questions = questionsOfKind(d.body.openQuestions, kind);
+      if (questions.length === 0) continue;
+      lines.push(
+        `### [${d.body.title}](features/${d.meta.id}.md)`,
+        "",
+        `${STATUS_BADGE[d.meta.status]} · ${d.meta.repos.map((r) => `\`${r}\``).join(", ")}`,
+        "",
+        ...questions.map((q) => `- [ ] ${formatQuestion(q)}`),
+        "",
+      );
+    }
   }
   return lines.join("\n");
 }

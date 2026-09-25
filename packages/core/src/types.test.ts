@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FeatureDocBody, FeatureDocMeta, SourceRef, isValidDocId } from "./types.ts";
+import { FeatureDocBody, FeatureDocMeta, OpenQuestion, SourceRef, isValidDocId } from "./types.ts";
 
 /**
  * LLM は指示どおりの形で返さないことがある。
@@ -118,4 +118,31 @@ test("isValidDocId とスキーマの判定が一致する", () => {
       `判定がずれている: ${JSON.stringify(id)}`,
     );
   }
+});
+
+// --- 確認事項 ---
+
+test("確認事項が文字列で来たら「未調査」として受け付ける（旧形式・指示違反の両方）", () => {
+  assert.deepEqual(OpenQuestion.parse("既定値は？"), {
+    question: "既定値は？",
+    kind: "unverified",
+    searched: [],
+  });
+});
+
+test("確認事項の種類が欠けていたり未知の値なら「未調査」に倒す（人に聞くべきことに格上げしない）", () => {
+  assert.equal(OpenQuestion.parse({ question: "q" }).kind, "unverified");
+  assert.equal(OpenQuestion.parse({ question: "q", kind: "意図" }).kind, "unverified");
+  assert.equal(OpenQuestion.parse({ question: "q", kind: "intent" }).kind, "intent");
+});
+
+test("確認事項が改行区切りの文字列1本で来ても、項目ごとの「未調査」になる", () => {
+  const body = FeatureDocBody.parse({ title: "t", summary: "s", overview: "o", openQuestions: "- 一つ目\n- 二つ目" });
+  assert.deepEqual(
+    body.openQuestions.map((q) => [q.question, q.kind]),
+    [
+      ["一つ目", "unverified"],
+      ["二つ目", "unverified"],
+    ],
+  );
 });

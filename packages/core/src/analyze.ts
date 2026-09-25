@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { extractJson, runAgent, runAgentDetailed, READ_ONLY_DENY_LIST } from "./agent.ts";
 import { computeConfidence, pruneInvalidSources, type ConfidenceBreakdown } from "./confidence.ts";
+import { verifyQuestionEvidence } from "./questions.ts";
 import { FeatureDocBody, type FeatureDoc, type PullRequestInput } from "./types.ts";
 import type { AgentUsage } from "./usage.ts";
 
@@ -63,7 +64,11 @@ const buildSystem = (procedure: string): string =>
 
 # 絶対に守るルール
 1. **出典のない断定を書かない。** \`rules\` の各項目には、実際に読んだファイルパス（と可能なら行番号）を \`sources\` に必ず入れる。推測で書いてよい場所はない。
-2. **わからないことは \`openQuestions\` に書く。** コードから読み取れない仕様（意図、外部システムの挙動、運用ルール）を推測で埋めない。「わかりません、開発に確認してください」と言えることがこのドキュメントの価値。
+2. **わからないことは \`openQuestions\` に書く。ただし、書く前に探す。** コードから読み取れない仕様を推測で埋めない。「わかりません、開発に確認してください」と言えることがこのドキュメントの価値。一方で、コードを読めば分かることを人に聞かせるのは、推測で埋めるのと同じくらい読み手の時間を奪う。各項目には \`kind\` を付ける:
+   - \`intent\`: コードを探したうえで、意図・運用ルール・外部システムの挙動など、コードに書かれていないため人に聞くしかないこと。\`searched\` に、答えを探して**実際に Read で開いた**ファイルを必ず挙げる。開いていないファイルを挙げても機械検証で落ち、1件も残らなければ \`unverified\` に格下げされる。
+   - \`unverified\`: コードを追えば分かるはずだが、今回そこまで読めなかったこと。設定の既定値、判定ロジック、画面の文言などは、書く前にまず Grep で探す。見つかったなら \`openQuestions\` ではなく \`rules\` に出典付きで書く。
+   - \`scope\`: このドキュメントの範囲についての相談（別ドキュメントに分けるべきか、など）。
+   \`question\` は開発者に直接聞ける疑問文で書く。「CS 向けに」のような読み手向けの前置きや言い回しは入れない。
 3. **既存の記述を消さない。** 与えられた既存ドキュメントのうち、この PR が触っていない部分はそのまま維持する。あなたの仕事は差分の反映であって書き直しではない。
 4. **専門用語を避ける。** \`overview\` と \`userBehavior\` は、コードを読まない人がそのまま顧客に説明できる言葉で書く。実装の詳細は \`rules\` に置く。
 
@@ -77,6 +82,7 @@ ${procedure}
 
 - \`body\` はプロンプトで与えられる JSON Schema に完全に一致させること。**キー名を勝手に変えない**（例: \`rules\` の各要素は必ず \`text\` と \`sources\`）。
 - \`sources\` の各要素は**文字列ではなくオブジェクト**: \`{ "repo": "org/repo", "file": "path/to/file.rb", "line": 42, "pr": "org/repo#1" }\`
+- \`openQuestions\` の各要素も**文字列ではなくオブジェクト**: \`{ "question": "...", "kind": "intent", "searched": ["path/to/file.rb"] }\`
 - 配列のフィールドには必ず配列を入れる。要素が1つでも配列にする。
 - 該当するものがないフィールドは空配列 \`[]\` または空文字 \`""\` にする。キーごと省略してもよいが、キー名を別のものに置き換えてはいけない。
 - \`confidence\` はドキュメントの確からしさ。コードを十分に読めて曖昧さが少なければ高く、推測が混ざるなら低くする。`;
@@ -319,8 +325,14 @@ function finalize(
     warnings.push(`出典がすべて無効だったため除外: "${text.slice(0, 80)}"`);
   }
 
+  // 「人に聞くしかない」と言うなら、探した跡が要る。無ければ「未調査」に格下げする
+  const checked = verifyQuestionEvidence(pruned.body, options.repoPath, filesRead);
+  for (const question of checked.downgraded) {
+    warnings.push(`探した箇所を確認できず「未調査」に格下げ: "${question.slice(0, 80)}"`);
+  }
+
   const confidence = computeConfidence({
-    body: pruned.body,
+    body: checked.body,
     repoPath: options.repoPath,
     currentRepo: repo,
     // PR が無い解析では null。空配列を渡すと読了率が満点になる
@@ -330,7 +342,7 @@ function finalize(
   });
 
   return {
-    output: { ...output, body: pruned.body, confidence: confidence.score },
+    output: { ...output, body: checked.body, confidence: confidence.score },
     confidence,
     warnings,
   };

@@ -8,6 +8,7 @@ import {
   backfillSource,
   isValidDocId,
   sourceFromPullRequest,
+  type OpenQuestion,
   type PullRequestInput,
 } from "./types.ts";
 import { UsageTally, type UsageSummary } from "./usage.ts";
@@ -30,7 +31,7 @@ export interface RunResult {
     confidence: number;
     breakdown: ConfidenceBreakdown;
     warnings: Array<MergeWarning | { kind: "invalid-source"; detail: string }>;
-    openQuestions: string[];
+    openQuestions: OpenQuestion[];
   }>;
   failures: Array<{ id: string; error: string }>;
   /** 所要時間と推定コスト */

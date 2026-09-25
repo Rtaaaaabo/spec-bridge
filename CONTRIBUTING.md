@@ -44,6 +44,12 @@ The prompts instruct the agent not to fill gaps with guesses. If you change a pr
 `openQuestions` still gets populated and that `verdict: "unknown"` still comes back for questions the
 documents can't answer.
 
+**"I don't know" needs evidence too.** A question meant for a person (`kind: "intent"`) must list the
+files the agent actually opened while looking for the answer (`searched`). `verifyQuestionEvidence()`
+(`questions.ts`) drops files that were never opened or do not exist, and downgrades the question to
+`unverified` if none remain, so the tool never asks a person something the code could have answered.
+Legacy string-only questions and questions with a missing kind are read as `unverified`.
+
 **When you add a confidence signal, think hard about its value when the signal cannot be measured.**
 `computeReadCoverage` returns 1 (full marks) for an empty changed-file list. That is reasonable when a
 pull request exists, but reusing it for backfill hands out full marks to an agent that read nothing —

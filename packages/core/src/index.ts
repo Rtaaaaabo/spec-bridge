@@ -12,3 +12,4 @@ export * from "./select-docs.ts";
 export * from "./ask.ts";
 export * from "./survey.ts";
 export * from "./usage.ts";
+export * from "./questions.ts";

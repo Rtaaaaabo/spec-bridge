@@ -1,5 +1,6 @@
 import type { ConfidenceBreakdown, CoverageKind } from "./confidence.ts";
 import type { MergeWarning } from "./merge.ts";
+import { formatQuestion, QUESTION_KIND_LABEL, QUESTION_KINDS, questionsOfKind } from "./questions.ts";
 import type { FeatureDoc, PullRequestInput } from "./types.ts";
 
 /**
@@ -76,8 +77,13 @@ export function buildDocsPullRequestBody(
 
     if (b.openQuestions.length > 0) {
       lines.push("### 開発者への確認事項", "");
-      for (const q of b.openQuestions) lines.push(`- [ ] ${q}`);
-      lines.push("");
+      for (const kind of QUESTION_KINDS) {
+        const questions = questionsOfKind(b.openQuestions, kind);
+        if (questions.length === 0) continue;
+        lines.push(`**${QUESTION_KIND_LABEL[kind]}**`, "");
+        for (const q of questions) lines.push(`- [ ] ${formatQuestion(q)}`);
+        lines.push("");
+      }
     }
   }
 

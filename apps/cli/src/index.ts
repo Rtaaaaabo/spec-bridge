@@ -6,7 +6,11 @@ import { stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
   coverageLabel,
+  formatQuestion,
   formatUsageSummary,
+  QUESTION_KIND_LABEL,
+  QUESTION_KINDS,
+  questionsOfKind,
   runBackfill,
   runPipeline,
   type RunResult,
@@ -91,9 +95,11 @@ function reportDoc(doc: RunResult["updated"][number]): void {
       `（モデル自己申告 ${b.selfReported.toFixed(2)}）`,
   );
   for (const w of doc.warnings) console.log(`  ⚠ ${w.detail}`);
-  if (doc.openQuestions.length > 0) {
-    console.log(`  ? 開発者への確認事項 ${doc.openQuestions.length} 件:`);
-    for (const q of doc.openQuestions) console.log(`    - ${q}`);
+  for (const kind of QUESTION_KINDS) {
+    const questions = questionsOfKind(doc.openQuestions, kind);
+    if (questions.length === 0) continue;
+    console.log(`  ? ${QUESTION_KIND_LABEL[kind]} ${questions.length} 件:`);
+    for (const q of questions) console.log(`    - ${formatQuestion(q)}`);
   }
 }
 

@@ -1,8 +1,10 @@
 import YAML from "yaml";
+import { formatQuestion, QUESTION_KIND_LABEL, QUESTION_KINDS, questionsOfKind } from "./questions.ts";
 import {
   FeatureDoc,
   type ChangelogEntry,
   type FeatureDocBody,
+  type OpenQuestion,
   type SourceRef,
 } from "./types.ts";
 
@@ -47,6 +49,17 @@ function section(title: string, content: string | null): string[] {
 function bulletList(items: string[]): string | null {
   if (items.length === 0) return null;
   return items.map((i) => `- ${i}`).join("\n");
+}
+
+/** 確認事項を種類ごとに分ける。人に聞くべきもの（intent）を先に出す */
+function questionList(questions: OpenQuestion[]): string | null {
+  const blocks = QUESTION_KINDS.flatMap((kind) => {
+    const list = bulletList(
+      questionsOfKind(questions, kind).map((q) => `[ ] ${formatQuestion(q)}`),
+    );
+    return list ? [`**${QUESTION_KIND_LABEL[kind]}**\n\n${list}`] : [];
+  });
+  return blocks.length > 0 ? blocks.join("\n\n") : null;
 }
 
 function table(headers: string[], rows: string[][]): string | null {
@@ -177,10 +190,7 @@ export function renderMarkdown(doc: FeatureDoc): string {
   );
 
   parts.push(
-    ...section(
-      "開発者への確認事項",
-      bulletList(b.openQuestions.map((q) => `[ ] ${q}`)),
-    ),
+    ...section("開発者への確認事項", questionList(b.openQuestions)),
   );
 
   parts.push(

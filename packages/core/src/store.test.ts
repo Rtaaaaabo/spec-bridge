@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DocStore, QUESTIONS_PAGE, renderQuestionsPage } from "./store.ts";
-import type { FeatureDoc } from "./types.ts";
+import type { FeatureDoc, OpenQuestion, QuestionKind } from "./types.ts";
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "spec-bridge-store-"));
@@ -123,7 +123,11 @@ test("インデックスページが生成される", async () => {
   assert.match(readme, /payment-retry/);
 });
 
-function withQuestions(id: string, questions: string[]): FeatureDoc {
+function q(question: string, kind: QuestionKind = "intent"): OpenQuestion {
+  return { question, kind, searched: kind === "intent" ? ["a.ts"] : [] };
+}
+
+function withQuestions(id: string, questions: OpenQuestion[]): FeatureDoc {
   const d = doc(id);
   d.body.openQuestions = questions;
   return d;
@@ -132,23 +136,44 @@ function withQuestions(id: string, questions: string[]): FeatureDoc {
 test("確認事項が全機能ぶん1ページに集まり、機能ドキュメントへのリンクが付く", async () => {
   const root = tempDir();
   const store = new DocStore(root);
-  await store.save(withQuestions("payment-retry", ["再試行の上限は設定で変えられるか"]));
-  await store.save(withQuestions("login", ["SSO 利用時もロックアウトするか", "ロック解除は誰が行うか"]));
+  await store.save(withQuestions("payment-retry", [q("再試行の上限を設定で変えられるようにした意図は")]));
+  await store.save(withQuestions("login", [q("SSO 利用時もロックアウトする運用か"), q("ロック解除は誰が行う運用か")]));
   await store.writeIndexPage();
 
   const page = await readFile(join(root, QUESTIONS_PAGE), "utf8");
-  assert.match(page, /2 機能・3 件/);
-  assert.match(page, /## \[login の機能\]\(features\/login\.md\)/);
-  assert.match(page, /- \[ \] SSO 利用時もロックアウトするか/);
-  assert.match(page, /- \[ \] 再試行の上限は設定で変えられるか/);
+  assert.match(page, /## 聞くべきこと（3 件）/);
+  assert.match(page, /### \[login の機能\]\(features\/login\.md\)/);
+  assert.match(page, /- \[ \] SSO 利用時もロックアウトする運用か（確認した箇所: `a\.ts`）/);
   // ID 順に並ぶ（決定論的）
   assert.ok(page.indexOf("login の機能") < page.indexOf("payment-retry の機能"));
+});
+
+test("確認事項ページは種類ごとに分かれ、聞くべきことが先頭に来る", async () => {
+  const root = tempDir();
+  const store = new DocStore(root);
+  await store.save(
+    withQuestions("mirror", [
+      q("既定値はいくつか", "unverified"),
+      q("別ドキュメントに分けるべきか", "scope"),
+      q("同期失敗を管理者に知らせる運用はあるか", "intent"),
+    ]),
+  );
+  await store.writeIndexPage();
+
+  const page = await readFile(join(root, QUESTIONS_PAGE), "utf8");
+  const ask = page.indexOf("## 聞くべきこと（1 件）");
+  const unverified = page.indexOf("## 追加で調べれば埋まる可能性があるもの（1 件）");
+  const scope = page.indexOf("## ドキュメントの範囲についてのメモ（1 件）");
+  assert.ok(ask !== -1 && unverified !== -1 && scope !== -1, page);
+  assert.ok(ask < unverified && unverified < scope);
+  assert.ok(page.indexOf("同期失敗を管理者に") < unverified, "聞くべきことが別の節に紛れた");
+  assert.ok(page.indexOf("既定値はいくつか") > unverified);
 });
 
 test("確認事項のない機能は確認事項ページに載らない", async () => {
   const root = tempDir();
   const store = new DocStore(root);
-  await store.save(withQuestions("asked", ["聞きたいこと"]));
+  await store.save(withQuestions("asked", [q("聞きたいこと")]));
   await store.save(doc("settled"));
   await store.writeIndexPage();
 
@@ -160,7 +185,7 @@ test("確認事項のない機能は確認事項ページに載らない", async
 test("確認事項が1件もなければ、そう書く（前回の一覧を残さない）", async () => {
   const root = tempDir();
   const store = new DocStore(root);
-  await store.save(withQuestions("payment-retry", ["聞きたいこと"]));
+  await store.save(withQuestions("payment-retry", [q("聞きたいこと")]));
   await store.writeIndexPage();
 
   // 確認が取れて確認事項が消えたあとの再生成
@@ -172,21 +197,45 @@ test("確認事項が1件もなければ、そう書く（前回の一覧を残�
   assert.doesNotMatch(page, /聞きたいこと/);
 });
 
-test("一覧ページに機能ごとの確認事項の件数と、確認事項ページへのリンクが載る", async () => {
+test("一覧ページの件数は「聞くべきこと」だけを数え、ほかは内訳として添える", async () => {
   const root = tempDir();
   const store = new DocStore(root);
-  await store.save(withQuestions("payment-retry", ["一つ目", "二つ目"]));
-  await store.save(doc("settled"));
+  await store.save(
+    withQuestions("payment-retry", [q("一つ目"), q("二つ目"), q("未調査", "unverified")]),
+  );
+  await store.save(withQuestions("settled", [q("範囲", "scope")]));
   await store.writeIndexPage();
 
   const readme = await readFile(join(root, "README.md"), "utf8");
-  assert.ok(readme.includes(`[開発者への確認事項](${QUESTIONS_PAGE}) にまとめています（2 件）`));
+  assert.ok(
+    readme.includes(`（聞くべきこと 2 件。ほかに追加調査 1 件・範囲のメモ 1 件）`),
+    readme,
+  );
   assert.match(readme, /payment-retry\.md\) \| 📝 AI生成 \| 2 件 \|/);
   assert.match(readme, /settled\.md\) \| 📝 AI生成 \| — \|/);
 });
 
+test("旧形式（文字列だけ）の確認事項を読み込むと「未調査」になる", async () => {
+  const root = tempDir();
+  const store = new DocStore(root);
+  await store.save(withQuestions("legacy", [q("仮")]));
+  // 旧形式のファイルを模して、データブロック内の確認事項を文字列に戻す
+  const path = join(root, "features", "legacy.md");
+  const raw = readFileSync(path, "utf8");
+  const block = raw.match(/<!-- spec-bridge:data\n([\s\S]*?)\n-->/)?.[1];
+  assert.ok(block, "データブロックが見つからない");
+  const data = JSON.parse(block) as { body: { openQuestions: unknown } };
+  data.body.openQuestions = ["昔の確認事項"];
+  writeFileSync(path, raw.replace(block, JSON.stringify(data, null, 2)));
+
+  const loaded = await store.get("legacy");
+  assert.deepEqual(loaded?.body.openQuestions, [
+    { question: "昔の確認事項", kind: "unverified", searched: [] },
+  ]);
+});
+
 test("確認事項ページは同じ入力から同じバイト列になる", () => {
-  const docs = [withQuestions("a", ["x"]), withQuestions("b", ["y", "z"])];
+  const docs = [withQuestions("a", [q("x")]), withQuestions("b", [q("y", "unverified"), q("z", "scope")])];
   assert.equal(renderQuestionsPage(docs), renderQuestionsPage(docs));
 });
 

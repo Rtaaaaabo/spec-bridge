@@ -173,6 +173,17 @@ pnpm analyze \
 `open-questions.md`, which collects every feature's "questions for the developers" on one page: the points
 the code could not settle and that were deliberately left unguessed.
 
+Questions come in three kinds, and only the first is meant to be put to a person:
+
+| Kind | Meaning |
+| --- | --- |
+| To ask (`intent`) | Intent, operations, or anything else the code does not record, after searching the code. Lists the files opened while searching |
+| Could be settled by reading further (`unverified`) | The code should answer it, but the agent did not read far enough |
+| Notes on document scope (`scope`) | Whether something belongs in a separate document, and similar |
+
+A question can only be `intent` if the agent actually opened at least one of the files it lists as searched.
+Otherwise it is mechanically downgraded to `unverified`.
+
 At the end of a run the CLI prints the elapsed time, the number of agent calls, and an estimated cost.
 The estimate is priced at API rates; if you authenticate with a Claude subscription it is not what you are billed.
 
