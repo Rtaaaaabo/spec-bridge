@@ -24,3 +24,6 @@ build/
 *.log
 .DS_Store
 tmp/
+
+# Claude Code の個人用メモ（各自の作業環境に依存するので共有しない）
+CLAUDE.local.md
