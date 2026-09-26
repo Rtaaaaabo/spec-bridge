@@ -13,6 +13,7 @@ PR がマージされる
     ↓ webhook
 spec-bridge webhook サーバー
     ├─ 署名を検証（これが唯一の認証）
+    ├─ リポジトリごとに認証を解決（App なら installation トークンへ交換）
     ├─ 解析対象リポジトリを一時ディレクトリへ浅くクローン
     ├─ 分類 →（仕様に影響するなら）解析
     ├─ docs リポジトリへ PR を作成
@@ -62,13 +63,17 @@ gh repo create <your-org>/<your-product>-specs --private
 6. 作成後の画面で:
    - **App ID** を控える
    - **Generate a private key** で秘密鍵（`.pem`）をダウンロード
-7. 左メニューの Install App から、**解析対象リポジトリにのみ**インストールする
+7. 左メニューの Install App から、**解析対象リポジトリ**にインストールする。
+   App のインストールトークンで動かす場合（手順3の推奨構成）は、**docs リポジトリにも**インストールする
+   — docs リポジトリへの書き込みもそのトークンで行うためです
 
-> ⚠️ **docs リポジトリには App をインストールしないでください。**
-> インストールすると、生成された PR をマージするたびに webhook が発火し、
-> docs リポジトリ自身を解析して次の PR を作る**無限ループ**になります。
-> docs リポジトリへの書き込みは `GITHUB_TOKEN`（PAT）で行うので、App のインストールは不要です。
-> （コード側にもガードを入れてありますが、そもそも入れないのが確実です）
+> ⚠️ **docs リポジトリに App を入れると、無限ループの防止はコード側のガードだけになります。**
+> 生成された PR をマージすると webhook が発火し、docs リポジトリ自身を解析して次の PR を作る、
+> という連鎖が起こりえます。これは `isDocsRepoEvent`（`packages/github/src/webhook.ts`）が
+> `SPEC_BRIDGE_DOCS_REPO` と一致するリポジトリのイベントを捨てることで止めています。
+> **`SPEC_BRIDGE_DOCS_REPO` の綴りが実際の docs リポジトリと一致していることを必ず確認してください**
+> （大文字小文字と前後の空白は無視されます）。
+> ガードに頼りたくない場合は、docs リポジトリには App を入れず、PAT 運用（手順3の代替）にしてください。
 
 > ⚠️ 秘密鍵と webhook secret はリポジトリにコミットしないでください。
 > `.gitignore` は `.env` と `.env.*` を除外しています。
@@ -83,7 +88,8 @@ gh repo create <your-org>/<your-product>-specs --private
 
 ## 3. 環境変数を設定する
 
-`spec-bridge/.env` に追記します。
+`spec-bridge/.env` に追記します。API の認証は
+**GitHub App のインストールトークン（推奨）** と **PAT** のどちらかです。
 
 ```bash
 # webhook
@@ -91,14 +97,59 @@ GITHUB_WEBHOOK_SECRET=<手順2で控えた secret>
 SPEC_BRIDGE_DOCS_REPO=<your-org>/<your-product>-specs
 PORT=3939
 
-# 認証（当面は PAT でよい。GitHub App のトークン交換は未実装）
-GITHUB_TOKEN=<Contents と Pull requests に read/write がある PAT>
+# 認証（推奨）: App ID + 秘密鍵を installation access token に交換する
+GITHUB_APP_ID=<手順2で控えた App ID>
+GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/your-app.private-key.pem
+
+# 秘密鍵をファイルで置きたくない場合は、改行を \n にエスケープして1行で渡してもよい
+# GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----"
+
+# 認証（代替）: PAT 1本で動かす。App の設定が無いときだけ使われる
+# GITHUB_TOKEN=<Contents と Pull requests に read/write がある PAT>
 ```
 
-> **現状の制約**: webhook の受信と署名検証は GitHub App で行いますが、
-> API 呼び出しは `GITHUB_TOKEN`（PAT）を使います。
-> インストールトークンへの交換（App ID + 秘密鍵 → installation access token）は未実装です。
-> 1組織で使う分には PAT で足りますが、複数テナントに配る場合は必須になります。
+App 運用にすると、PAT 運用と比べて次が変わります。
+
+- トークンが**インストール先のリポジトリに限定**される（PAT は持ち主の権限がそのまま効く）
+- レート制限が **installation ごとに 5,000/時**（PAT は1本を全用途で共有）
+- 解析対象リポジトリ用と docs リポジトリ用で**別のトークン**になる。
+  取り違えを防ぐため、`fetchPullRequest` と `publishDocsAsPullRequest` は認証を必須の引数で受けます
+
+> ⚠️ `GITHUB_APP_ID` だけ、または秘密鍵だけを設定すると**起動時にエラーになります**。
+> 黙って PAT にフォールバックさせていません
+> （「App を設定したつもりで、実は PAT で動いていた」が一番気づけない失敗のため）。
+
+### 認証だけ先に確かめる
+
+トンネルを張って PR をマージする前に、認証設定だけを確認できます。**LLM を呼ばないので無料です。**
+
+```bash
+pnpm check-auth --repo-name <解析対象の org/repo> --clone
+```
+
+```
+認証方式: GitHub App（installation トークンに交換）
+
+✓ App: spec-bridge-acme（slug spec-bridge-acme / App ID 123456）
+  - acme（installation 789 / 対象 selected / Contents: write / Pull requests: write）
+
+✓ docs リポジトリ: acme/product-specs（private / 既定ブランチ main）
+✓ 解析対象: acme/backend（private / 既定ブランチ main）
+  ✓ トークンで浅いクローンができた
+
+結果: 使えます
+```
+
+確認する内容は次の4つです。
+
+- App ID と秘密鍵の組み合わせが正しいか（JWT が通るか）
+- どのアカウントにインストールされていて、Contents / Pull requests が **write** か
+- docs リポジトリと解析対象リポジトリに、**実際に使う認証で**アクセスできるか
+- `--clone` を付けると、そのトークンで git の浅いクローンまでできるか（すぐ破棄します）
+
+> ⚠️ 非公開リポジトリに権限が無い場合、GitHub は **404**（存在しない）を返します。
+> 「リポジトリが無い」と見分けがつかないので、404 が出たら
+> fine-grained PAT の対象リポジトリ、または App のインストール先を確認してください。
 
 ## 4. ローカルで受け取れるようにする
 
@@ -134,9 +185,11 @@ pnpm webhook
 spec-bridge webhook listening on http://localhost:3939
   POST /webhooks/github
   docs リポジトリ: your-org/your-product-specs
+  GitHub 認証: GitHub App（installation トークン）
 ```
 
 必要な環境変数が足りない場合は起動時に落ちて、何が足りないかを表示します。
+**どちらの認証で動いているかは最後の行で確認できます**（PAT のときは `PAT（GITHUB_TOKEN）`）。
 
 ## 6. 動作確認
 
@@ -149,6 +202,7 @@ curl http://localhost:3939/health
 
 ```
 ▸ acme/backend#123 feat: ... （8 ファイル）
+  docs リポジトリの認証を確認（app）
   docs リポジトリから 3 件のドキュメントを取得
 ▸ この PR が仕様に影響するか分類中…
   → 影響あり: ...
@@ -163,16 +217,17 @@ curl http://localhost:3939/health
 | 症状 | 原因 |
 | --- | --- |
 | 401 が返る | `GITHUB_WEBHOOK_SECRET` が GitHub App 側の設定と違う |
-| 202 は返るが PR ができない | サーバーログを確認。`GITHUB_TOKEN` の権限不足が多い |
+| 202 は返るが PR ができない | サーバーログを確認。権限不足（Contents / Pull requests が read/write でない）が多い |
+| `GitHub App が <repo> にインストールされていません` | その App を対象リポジトリに入れていない。docs リポジトリにも必要（手順2の7） |
+| 起動時に `秘密鍵がありません` | `GITHUB_APP_ID` だけ設定されている。秘密鍵も渡すか、App の設定を消して PAT 運用にする |
 | `{"ignored":true}` | マージされた PR 以外は無視する仕様。正常 |
-| 生成された PR をマージすると、また PR ができる | docs リポジトリに App がインストールされている。外してください |
+| 生成された PR をマージすると、また PR ができる | `SPEC_BRIDGE_DOCS_REPO` が docs リポジトリと一致しておらず、ループのガードが効いていない |
 | 解析が始まらない | 分類でスキップされている。ログの「影響なし」の理由を確認 |
 
 GitHub App の Advanced タブから、送信された webhook の内容と再送（Redeliver）ができます。
 
 ## まだできないこと
 
-- **インストールトークンへの交換が未実装**（上記のとおり PAT で代用）
 - **キューがない。** リクエストを受けたプロセスがそのまま解析します。
   同時に大量の PR がマージされると詰まるため、本格運用では Trigger.dev などが必要です
 - **リトライがない。** 解析が失敗したら、GitHub App の画面から手動で Redeliver してください

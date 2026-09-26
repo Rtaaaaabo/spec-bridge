@@ -296,6 +296,10 @@ docs リポジトリへの PR が承認フローそのものです。人間が�
 
 GitHub App の作成・権限・ローカルへのトンネリングの手順は
 [docs/github-app-setup.ja.md](docs/github-app-setup.ja.md) にあります。
+API の認証は App の installation access token（推奨）と PAT のどちらかを選べます。
+
+SaaS として動かすための設計（ジョブ分割・テナントごとの認証・提出の一般化）は
+[docs/saas-plan.ja.md](docs/saas-plan.ja.md) に置いています。
 
 ## マルチリポジトリ
 

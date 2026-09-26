@@ -12,11 +12,13 @@ import {
 } from "@spec-bridge/core";
 import {
   checkoutForAnalysis,
-  createOctokit,
   fetchPullRequest,
   isDocsRepoEvent,
+  parseRepoFullName,
   publishDocsAsPullRequest,
+  type GitHubAuth,
   type MergedPullRequestEvent,
+  type Octokit,
 } from "@spec-bridge/github";
 import { cp, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -26,7 +28,13 @@ export interface HandlerConfig {
   /** ドキュメントの提出先 `owner/repo` */
   docsRepo: string;
   docsBaseBranch?: string;
-  githubToken?: string;
+  /**
+   * GitHub の認証。App の installation トークンか PAT のどちらか（`resolveGitHubAuth()`）。
+   *
+   * **リポジトリごとに解決する。** 解析対象と docs リポジトリは別のインストールになりうるので、
+   * トークン1本を使い回さない。
+   */
+  auth: GitHubAuth;
 }
 
 export interface HandlerResult {
@@ -82,19 +90,29 @@ export async function handleMergedPullRequest(
     };
   }
 
-  const [owner, repo] = event.repo.split("/");
-  if (!owner || !repo) {
-    return { status: "failed", detail: `リポジトリ名を解釈できません: ${event.repo}` };
+  let owner: string;
+  let repo: string;
+  try {
+    ({ owner, repo } = parseRepoFullName(event.repo));
+  } catch (error) {
+    return { status: "failed", detail: error instanceof Error ? error.message : String(error) };
   }
 
-  const octokit = createOctokit(config.githubToken);
-  const pr = await fetchPullRequest({ owner, repo, number: event.number }, octokit);
+  // 解析対象リポジトリの認証。webhook が installation id を運んでくるので、
+  // App 運用ではそれをそのまま使える（リポジトリから引き直す API 呼び出しを省ける）
+  const source = await config.auth.forRepo(event.repo, event.installationId);
+  const pr = await fetchPullRequest({ owner, repo, number: event.number }, source.octokit);
   log(`▸ ${event.repo}#${event.number} ${pr.title}（${pr.changedFiles.length} ファイル）`);
+
+  // docs リポジトリは別のインストールになりうるので、ここで一度解決して**設定ミスを先に落とす**。
+  // 数分かけて解析したあとに「App が docs リポジトリに入っていない」と分かるのは高すぎる。
+  const docsAuthCheck = await config.auth.forRepo(config.docsRepo);
+  log(`  docs リポジトリの認証を確認（${config.auth.kind}）`);
 
   const checkout = await checkoutForAnalysis({
     repo: event.repo,
     sha: event.mergeCommitSha,
-    token: config.githubToken ?? process.env.GITHUB_TOKEN,
+    token: source.token,
   });
   const docsDir = await mkdtemp(join(tmpdir(), "spec-bridge-docs-"));
 
@@ -102,7 +120,7 @@ export async function handleMergedPullRequest(
     // 既存ドキュメントを docs リポジトリから取り込んでから解析する
     // （そうしないと毎回「新規作成」になり、既存の記述を引き継げない）
     const existingCount = await hydrateExistingDocs(
-      octokit,
+      docsAuthCheck.octokit,
       config.docsRepo,
       docsDir,
       log,
@@ -142,10 +160,11 @@ export async function handleMergedPullRequest(
       files.push({ path: page, content: await readFile(join(docsDir, page), "utf8") });
     }
 
-    const [docsOwner, docsRepoName] = config.docsRepo.split("/");
-    if (!docsOwner || !docsRepoName) {
-      return { status: "failed", detail: `docs リポジトリ名が不正です: ${config.docsRepo}` };
-    }
+    const { owner: docsOwner, repo: docsRepoName } = parseRepoFullName(config.docsRepo);
+
+    // 解析に数分かかっており、最初に取ったトークンは失効に近づいている。
+    // 取り直す（有効なら同じものが返る）
+    const docs = await config.auth.forRepo(config.docsRepo);
 
     const published = await publishDocsAsPullRequest(
       { owner: docsOwner, repo: docsRepoName, baseBranch: config.docsBaseBranch },
@@ -155,7 +174,7 @@ export async function handleMergedPullRequest(
         body: buildDocsPullRequestBody(pr, changes),
         branchSuffix: `${repo}-${event.number}`,
       },
-      octokit,
+      docs.octokit,
     );
 
     log(`  ✓ PR 作成: ${published.prUrl}`);
@@ -185,13 +204,12 @@ export async function handleMergedPullRequest(
 
 /** docs リポジトリの既存ドキュメントをローカルの作業ディレクトリへ展開する */
 async function hydrateExistingDocs(
-  octokit: ReturnType<typeof createOctokit>,
+  octokit: Octokit,
   docsRepo: string,
   destination: string,
   log: (line: string) => void,
 ): Promise<number> {
-  const [owner, repo] = docsRepo.split("/");
-  if (!owner || !repo) return 0;
+  const { owner, repo } = parseRepoFullName(docsRepo);
 
   try {
     const listing = await octokit.rest.repos.getContent({ owner, repo, path: "features" });
