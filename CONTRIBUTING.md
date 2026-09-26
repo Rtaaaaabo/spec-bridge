@@ -19,6 +19,7 @@ cp .env.example .env
 | `pnpm analyze --pr <PR> --repo <path> --docs <path>` | Analyze a single pull request |
 | `pnpm web` | The support desk UI |
 | `pnpm webhook` / `pnpm worker` | Receive webhooks / run queued jobs (needs `DATABASE_URL`) |
+| `pnpm backfill-run --repo <org/repo>` | Enqueue a backfill as one job per feature |
 | `pnpm webhook` | The GitHub App webhook server |
 
 ## Invariants this project maintains

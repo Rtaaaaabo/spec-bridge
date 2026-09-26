@@ -21,6 +21,7 @@ import {
   type Octokit,
 } from "@spec-bridge/github";
 import { cp, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { fetchDocsFromRepo } from "./docs-mirror.ts";
 import { homedir, tmpdir } from "node:os";
 import { dirname } from "node:path";
 
@@ -119,11 +120,11 @@ export async function handleMergedPullRequest(
   try {
     // 既存ドキュメントを docs リポジトリから取り込んでから解析する
     // （そうしないと毎回「新規作成」になり、既存の記述を引き継げない）
-    const existingCount = await hydrateExistingDocs(
+    const existingCount = await fetchDocsFromRepo(
       docsAuthCheck.octokit,
       config.docsRepo,
       docsDir,
-      log,
+      { log },
     );
     log(`  docs リポジトリから ${existingCount} 件のドキュメントを取得`);
 
@@ -199,45 +200,5 @@ export async function handleMergedPullRequest(
     // ソースコードのチェックアウトは失敗時も必ず消す（永続化しない約束のため）
     await checkout.cleanup();
     await rm(docsDir, { recursive: true, force: true });
-  }
-}
-
-/** docs リポジトリの既存ドキュメントをローカルの作業ディレクトリへ展開する */
-async function hydrateExistingDocs(
-  octokit: Octokit,
-  docsRepo: string,
-  destination: string,
-  log: (line: string) => void,
-): Promise<number> {
-  const { owner, repo } = parseRepoFullName(docsRepo);
-
-  try {
-    const listing = await octokit.rest.repos.getContent({ owner, repo, path: "features" });
-    if (!Array.isArray(listing.data)) return 0;
-
-    const { mkdir, writeFile } = await import("node:fs/promises");
-    await mkdir(join(destination, "features"), { recursive: true });
-
-    let count = 0;
-    for (const entry of listing.data) {
-      if (entry.type !== "file" || !entry.name.endsWith(".md")) continue;
-      const file = await octokit.rest.repos.getContent({
-        owner,
-        repo,
-        path: entry.path,
-      });
-      if (Array.isArray(file.data) || file.data.type !== "file") continue;
-      await writeFile(
-        join(destination, "features", entry.name),
-        Buffer.from(file.data.content, "base64").toString("utf8"),
-        "utf8",
-      );
-      count += 1;
-    }
-    return count;
-  } catch {
-    // features ディレクトリがまだ無い（初回）
-    log("  docs リポジトリに既存ドキュメントはありません");
-    return 0;
   }
 }

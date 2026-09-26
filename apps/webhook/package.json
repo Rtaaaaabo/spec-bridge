@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "worker": "tsx src/worker.ts"
+    "worker": "tsx src/worker.ts",
+    "backfill-run": "tsx src/enqueue-backfill.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.12",

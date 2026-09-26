@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import type { ClaimOptions, JobStore } from "./store.ts";
+import type { ClaimOptions, JobQuery, JobStore } from "./store.ts";
 import { DEFAULT_MAX_ATTEMPTS, type EnqueueResult, type Job, type JobInput } from "./types.ts";
 
 /** DB の行。`Job` との変換はこのファイルの中だけに閉じる */
@@ -167,6 +167,30 @@ export class PostgresJobStore implements JobStore {
     const { rows } = await this.pool.query<JobRow>(`select * from jobs where id = $1`, [id]);
     const row = rows[0];
     return row ? toJob(row) : null;
+  }
+
+  /**
+   * 条件に合うジョブを返す。
+   *
+   * `payload @> $3::jsonb` は「payload がこの組を含む」という Postgres の包含演算子。
+   * 同じ `runId` を持つ兄弟ジョブを引くのに使う。
+   */
+  async find(query: JobQuery): Promise<Job[]> {
+    const { rows } = await this.pool.query<JobRow>(
+      `select * from jobs
+        where ($1::text[] is null or kind  = any($1))
+          and ($2::text[] is null or state = any($2))
+          and ($3::jsonb  is null or payload @> $3::jsonb)
+        order by created_at
+        limit $4`,
+      [
+        query.kinds ?? null,
+        query.states ?? null,
+        query.payloadMatch ? JSON.stringify(query.payloadMatch) : null,
+        query.limit ?? 1000,
+      ],
+    );
+    return rows.map(toJob);
   }
 
   async close(): Promise<void> {

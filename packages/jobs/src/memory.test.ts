@@ -102,3 +102,26 @@ test("種類で絞って取れる", async () => {
   assert.equal(await store.claim({ leaseMs: 1000, kinds: ["analyze.pr"] }), null);
   assert.equal((await store.claim({ leaseMs: 1000, kinds: ["backfill.survey"] }))?.kind, "backfill.survey");
 });
+
+// --- 兄弟ジョブの検索（バックフィルの予算判定と待ち合わせに使う） ---
+
+test("runId で同じランのジョブだけを引ける", async () => {
+  const store = new MemoryJobStore();
+  await store.enqueue(input({ kind: "backfill.feature", dedupeKey: "a", payload: { runId: "r1" } }));
+  await store.enqueue(input({ kind: "backfill.feature", dedupeKey: "b", payload: { runId: "r1" } }));
+  await store.enqueue(input({ kind: "backfill.feature", dedupeKey: "c", payload: { runId: "r2" } }));
+
+  const found = await store.find({ kinds: ["backfill.feature"], payloadMatch: { runId: "r1" } });
+  assert.deepEqual(found.map((j) => j.dedupeKey), ["a", "b"]);
+});
+
+test("状態で絞れる（終わっていない兄弟がいるかの判定に使う）", async () => {
+  const store = new MemoryJobStore();
+  await store.enqueue(input({ dedupeKey: "a", payload: { runId: "r1" } }));
+  const { job } = await store.enqueue(input({ dedupeKey: "b", payload: { runId: "r1" } }));
+  await store.claim({ leaseMs: 1000 });
+  await store.succeed(job.id);
+
+  const pending = await store.find({ states: ["queued", "running"], payloadMatch: { runId: "r1" } });
+  assert.equal(pending.length, 1);
+});

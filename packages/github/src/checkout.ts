@@ -29,6 +29,8 @@ export interface CheckoutOptions {
 
 export interface Checkout {
   path: string;
+  /** 取り出した状態のコミット。バックフィルの「起点」として PR 本文に載せる */
+  sha: string | null;
   cleanup: () => Promise<void>;
 }
 
@@ -68,7 +70,10 @@ export async function checkoutForAnalysis(options: CheckoutOptions): Promise<Che
     );
   }
 
-  return { path: dir, cleanup };
+  // 「どの状態を読んだか」は後段（提出 PR の本文）で要る。ここで確定させておく
+  const { sha } = await detectCheckoutState(dir);
+
+  return { path: dir, sha, cleanup };
 }
 
 /**

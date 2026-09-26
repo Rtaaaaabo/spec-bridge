@@ -3,7 +3,7 @@ import { classifyPullRequest, type ClassifyResult } from "./classify.ts";
 import type { ConfidenceBreakdown } from "./confidence.ts";
 import { mergeAnalysis, type MergeWarning } from "./merge.ts";
 import { DocStore } from "./store.ts";
-import { surveyFeatures } from "./survey.ts";
+import { surveyFeatures, type SurveyedFeature } from "./survey.ts";
 import {
   backfillSource,
   isValidDocId,
@@ -174,10 +174,22 @@ export interface BackfillResult {
  * 1件失敗しても続行し、書けたものは残す。全部を1トランザクションにすると
  * 20件目の失敗で19件分の解析が捨てられる。
  */
-export async function runBackfill(options: BackfillOptions): Promise<BackfillResult> {
+export interface BackfillSurvey {
+  features: SurveyedFeature[];
+  warnings: string[];
+  usage: UsageSummary;
+}
+
+/**
+ * バックフィルの前半だけを行う: **何についてドキュメントを書くかを決める。**
+ *
+ * 後半（機能ごとの解析）と分けてあるのは、SaaS 側で機能1件＝ジョブ1件として
+ * 分割して走らせるため。1件あたり数分・上限に当たりうるので、まとめて1トランザクションに
+ * すると途中で全部失う。CLI は `runBackfill` がこの2つを順に呼ぶ。
+ */
+export async function surveyForBackfill(options: BackfillOptions): Promise<BackfillSurvey> {
   const log = options.log ?? (() => {});
   const store = new DocStore(options.docsPath);
-  const source = backfillSource(options.repo);
   const tally = new UsageTally();
 
   log(`▸ 既存ドキュメントを読み込み中: ${options.docsPath}`);
@@ -195,48 +207,84 @@ export async function runBackfill(options: BackfillOptions): Promise<BackfillRes
   log(`  ${survey.features.length} 件の機能を検出`);
   for (const warning of survey.warnings) log(`  ⚠ ${warning}`);
 
+  return { features: survey.features, warnings: survey.warnings, usage: tally.summary() };
+}
+
+/**
+ * 列挙された機能のうち1件を書き起こす。
+ *
+ * **失敗は投げる。** 呼び出し側（CLI のループ / ジョブのワーカー）が、
+ * 続行するか再試行するかを決める。
+ */
+export async function backfillOneFeature(
+  feature: SurveyedFeature,
+  options: BackfillOptions,
+): Promise<{ updated: RunResult["updated"][number]; usage: UsageSummary }> {
+  const log = options.log ?? (() => {});
+  const store = new DocStore(options.docsPath);
+  const source = backfillSource(options.repo);
+  const tally = new UsageTally();
+
+  // normalizeSurvey で両方 null の項目は落としているが、型の上では null になりうる
+  const id = feature.docId ?? feature.newDocId;
+  if (!id) throw new Error("docId と newDocId の両方が null でした");
+
+  const existing = feature.docId ? await store.get(feature.docId) : null;
+  const result = await analyzeFeature(
+    { kind: "codebase", repo: options.repo, entryPoints: feature.entryPoints },
+    existing,
+    { id, title: feature.title, why: feature.why },
+    {
+      repoPath: options.repoPath,
+      allowBash: options.allowBash,
+      onProgress: log,
+      onUsage: tally.add,
+    },
+  );
+
+  const { doc, warnings } = mergeAnalysis(existing, result.output, source, id, []);
+  const path = await store.save(doc);
+  log(`  ✓ 書き出し: ${path} (確度 ${doc.meta.confidence.toFixed(2)})`);
+
+  return {
+    updated: {
+      id,
+      path,
+      confidence: doc.meta.confidence,
+      breakdown: result.confidence,
+      warnings: [
+        ...warnings,
+        ...result.warnings.map((detail) => ({ kind: "invalid-source" as const, detail })),
+      ],
+      openQuestions: doc.body.openQuestions,
+    },
+    usage: tally.summary(),
+  };
+}
+
+export async function runBackfill(options: BackfillOptions): Promise<BackfillResult> {
+  const log = options.log ?? (() => {});
+  const store = new DocStore(options.docsPath);
+
+  const survey = await surveyForBackfill(options);
+  let costUsd = survey.usage.costUsd;
+  let agentRuns = survey.usage.agentRuns;
+  const startedAt = Date.now() - survey.usage.elapsedMs;
+
   const updated: RunResult["updated"] = [];
   const failures: RunResult["failures"] = [];
 
   for (const [i, feature] of survey.features.entries()) {
-    // 上の normalizeSurvey で両方 null の項目は落としているが、型の上では null になりうる
-    const id = feature.docId ?? feature.newDocId;
-    if (!id) {
-      failures.push({ id: feature.title, error: "docId と newDocId の両方が null でした" });
-      continue;
-    }
-
+    const id = feature.docId ?? feature.newDocId ?? feature.title;
     log(`▸ [${i + 1}/${survey.features.length}] 「${feature.title}」(${id}) を解析中…`);
     try {
-      const existing = feature.docId ? await store.get(feature.docId) : null;
-      const result = await analyzeFeature(
-        { kind: "codebase", repo: options.repo, entryPoints: feature.entryPoints },
-        existing,
-        { id, title: feature.title, why: feature.why },
-        {
-          repoPath: options.repoPath,
-          allowBash: options.allowBash,
-          onProgress: log,
-          onUsage: tally.add,
-        },
-      );
-
-      const { doc, warnings } = mergeAnalysis(existing, result.output, source, id, []);
-      const path = await store.save(doc);
-      log(`  ✓ 書き出し: ${path} (確度 ${doc.meta.confidence.toFixed(2)})`);
-
-      updated.push({
-        id,
-        path,
-        confidence: doc.meta.confidence,
-        breakdown: result.confidence,
-        warnings: [
-          ...warnings,
-          ...result.warnings.map((detail) => ({ kind: "invalid-source" as const, detail })),
-        ],
-        openQuestions: doc.body.openQuestions,
-      });
+      const result = await backfillOneFeature(feature, options);
+      costUsd += result.usage.costUsd;
+      agentRuns += result.usage.agentRuns;
+      updated.push(result.updated);
     } catch (error) {
+      // 1件失敗しても続ける。全体を1トランザクションにすると、
+      // 20件目の失敗で19件ぶんの解析が捨てられる
       const message = error instanceof Error ? error.message : String(error);
       log(`  ✗ 失敗: ${message}`);
       failures.push({ id, error: message });
@@ -253,6 +301,6 @@ export async function runBackfill(options: BackfillOptions): Promise<BackfillRes
     surveyWarnings: survey.warnings,
     updated,
     failures,
-    usage: tally.summary(),
+    usage: { costUsd, agentRuns, elapsedMs: Date.now() - startedAt },
   };
 }

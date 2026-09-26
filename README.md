@@ -217,6 +217,27 @@ source pull request, the body states **which commit the documents were written f
 **surveyed / generated / failed** counts, elapsed time, and estimated cost. If the working tree has
 uncommitted changes, no origin commit is stated — that SHA would not be an honest origin.
 
+#### Running it as jobs (split per feature)
+
+`pnpm backfill` processes every feature in one local run. Each feature takes minutes and can hit the
+LLM's usage limit, so on a server the work is split into one job per feature.
+
+```bash
+pnpm backfill-run --repo acme/backend --limit 5 --budget 10   # enqueue
+pnpm worker                                                    # run
+```
+
+| | |
+| --- | --- |
+| `backfill.survey` | Survey features and enqueue one job each (tens of seconds) |
+| `backfill.feature` | Write one feature and commit it to a branch in the docs repository |
+| `backfill.finish` | Regenerate the index and open questions, then open a single pull request |
+
+- A failed feature can be picked up on its own — **one failure doesn't take the others down**
+- Past `--budget`, remaining features are skipped and the run proceeds to finish. At roughly $1.7 per
+  feature, a cap is not optional
+- The finish step waits until every feature job has settled
+
 **Confidence is measured differently here.** With a pull request you can measure how much of the diff the
 agent actually read. Backfill has no diff, so it measures whether the agent actually opened the files it
 cited. Checking that `file:line` exists (`sourceValidity`) cannot catch a citation to a real file the

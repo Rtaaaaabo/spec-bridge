@@ -3,23 +3,27 @@ import { fileURLToPath } from "node:url";
 import { Worker, type JobStore } from "@spec-bridge/jobs";
 import { checkGitHubAuthConfig, resolveGitHubAuth, type GitHubAuth } from "@spec-bridge/github";
 import { ANALYZE_PR, parseAnalyzePayload } from "./analyze-job.ts";
+import { BACKFILL_FEATURE, BACKFILL_FINISH, BACKFILL_SURVEY } from "./backfill-job.ts";
+import { featureHandler, finishHandler, surveyHandler } from "./backfill-handlers.ts";
 import { createJobStore, loadEnv, readConfig } from "./config.ts";
 import { handleMergedPullRequest } from "./handler.ts";
 
 export interface AnalyzeWorkerOptions {
   store: JobStore;
   auth: GitHubAuth;
+  /** PR 解析の提出先。バックフィルは**ジョブごと**に提出先を持つ */
   docsRepo: string;
   log?: (line: string) => void;
 }
 
 /**
- * 解析ジョブを処理するワーカーを組み立てる。
+ * ジョブを処理するワーカーを組み立てる。
  *
  * 解析は1件あたり数分かかるので、リースは長めに取り、処理中はハートビートで延ばす。
  */
 export function createAnalyzeWorker(options: AnalyzeWorkerOptions): Worker {
   const log = options.log ?? ((line: string) => console.log(line));
+  const deps = { store: options.store, auth: options.auth };
 
   return new Worker({
     store: options.store,
@@ -27,6 +31,9 @@ export function createAnalyzeWorker(options: AnalyzeWorkerOptions): Worker {
     heartbeatMs: 60_000,
     log,
     handlers: {
+      [BACKFILL_SURVEY]: surveyHandler(deps),
+      [BACKFILL_FEATURE]: featureHandler(deps),
+      [BACKFILL_FINISH]: finishHandler(deps),
       [ANALYZE_PR]: async (job) => {
         const event = parseAnalyzePayload(job.payload);
         const result = await handleMergedPullRequest(
