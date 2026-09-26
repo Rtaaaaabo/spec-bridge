@@ -98,6 +98,15 @@ differ per tenant, that means *acting as a different tenant*.
 - Half-configured App credentials (an ID with no key, or the reverse) fail at startup rather than falling
   back to the PAT. "I configured the App but it was really running on the PAT" is invisible to operators
 
+### 7. Pages and API routes must call `currentSession()`
+
+`apps/web/middleware.ts` only checks whether a session cookie is **present** — the edge runtime cannot read
+the repository-root `.env`, so it cannot hold the signing key. **The authentication is
+`currentSession()` (`apps/web/lib/auth.ts`) on the server.**
+
+Call it at the top of every new page and route handler. One route that forgets is one route that serves
+feature documents to anyone.
+
 ## Testing policy
 
 Tests cover the parts that **don't depend on model output**: deterministic Markdown rendering, merge

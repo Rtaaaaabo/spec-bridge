@@ -36,6 +36,9 @@ importers:
       '@spec-bridge/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@spec-bridge/github':
+        specifier: workspace:*
+        version: link:../../packages/github
       next:
         specifier: ^16.2.12
         version: 16.2.12(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
