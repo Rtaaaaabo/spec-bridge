@@ -86,6 +86,31 @@ export function parseRepoFromRemoteUrl(url: string): string | null {
   return `${match[1]}/${match[2]}`;
 }
 
+export interface CheckoutState {
+  /** HEAD のコミット。git リポジトリでなければ null */
+  sha: string | null;
+  /** 追跡ファイルに未コミットの変更があるか */
+  dirty: boolean;
+}
+
+/**
+ * ローカルチェックアウトの状態を見る。
+ *
+ * バックフィルの提出 PR に「どの状態のコードから起こしたか」を書くために使う。
+ * **作業ツリーが汚れていれば、その SHA は起点として嘘になる**ので、
+ * 呼び出し側が「コミットに紐づいていない」と書けるよう、汚れも一緒に返す。
+ */
+export async function detectCheckoutState(repoPath: string): Promise<CheckoutState> {
+  try {
+    const { stdout: sha } = await run("git", ["-C", repoPath, "rev-parse", "HEAD"]);
+    const { stdout: status } = await run("git", ["-C", repoPath, "status", "--porcelain", "-uno"]);
+    return { sha: sha.trim() || null, dirty: status.trim().length > 0 };
+  } catch {
+    // git リポジトリでない、コミットが1つもない、など
+    return { sha: null, dirty: false };
+  }
+}
+
 /** ローカルチェックアウトの origin から `org/repo` を推測する */
 export async function detectRepoName(repoPath: string): Promise<string | null> {
   try {

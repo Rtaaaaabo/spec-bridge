@@ -2,6 +2,7 @@ import type { ConfidenceBreakdown, CoverageKind } from "./confidence.ts";
 import type { MergeWarning } from "./merge.ts";
 import { formatQuestion, QUESTION_KIND_LABEL, QUESTION_KINDS, questionsOfKind } from "./questions.ts";
 import type { FeatureDoc, PullRequestInput } from "./types.ts";
+import { formatUsageSummary, type UsageSummary } from "./usage.ts";
 
 /**
  * 読了率が何を測ったかのラベル。
@@ -18,23 +19,42 @@ export interface DocChange {
 }
 
 /**
+ * この PR の出どころ。
+ *
+ * PR 解析とバックフィルで書けることが違う。バックフィルには参照すべき PR が無いので、
+ * 「どのコミットのコードから起こしたか」と「何件中何件を書けたか」を代わりに出す。
+ * **途中で終わったランを、レビュアーが見て分かるようにするのが目的。**
+ */
+export type DocsPrSource =
+  | { kind: "pull-request"; pr: PullRequestInput }
+  | {
+      kind: "backfill";
+      /** `org/repo` */
+      repo: string;
+      /** 起点にしたコミット。分からなければ null */
+      sha?: string | null;
+      /** 列挙された機能数 */
+      surveyed: number;
+      /** 書けなかった機能数 */
+      failed?: number;
+      usage?: UsageSummary;
+    };
+
+/**
  * docs リポジトリへ出す PR の本文を組み立てる。
  *
  * この PR がレビュー承認フローそのものなので、**レビュアーが何を確認すべきか**を
  * 本文に書く。特に確度の内訳と警告は、機械的に検出できた「怪しさ」なので必ず出す。
  */
 export function buildDocsPullRequestBody(
-  sourcePr: PullRequestInput,
+  source: DocsPrSource,
   changes: DocChange[],
 ): string {
   const lines: string[] = [];
 
+  lines.push(...introLines(source));
+
   lines.push(
-    `[\`${sourcePr.repo}#${sourcePr.number}\`](https://github.com/${sourcePr.repo}/pull/${sourcePr.number}) ` +
-      `のマージに伴い、機能仕様ドキュメントを更新しました。`,
-    "",
-    `> ${sourcePr.title}`,
-    "",
     "## レビューしてほしいこと",
     "",
     "- [ ] 記述が実装と合っているか（特に**権限・ロール**）",
@@ -97,12 +117,54 @@ export function buildDocsPullRequestBody(
   return lines.join("\n");
 }
 
-export function buildDocsPullRequestTitle(
-  sourcePr: PullRequestInput,
-  changes: DocChange[],
-): string {
+export function buildDocsPullRequestTitle(source: DocsPrSource, changes: DocChange[]): string {
   const titles = changes.map((c) => c.doc.body.title);
-  const subject =
-    titles.length === 1 ? titles[0] : `${titles[0]} ほか ${titles.length - 1} 件`;
-  return `docs: ${subject}（${sourcePr.repo}#${sourcePr.number}）`;
+  const suffix =
+    source.kind === "pull-request"
+      ? `${source.pr.repo}#${source.pr.number}`
+      : `${source.repo} のバックフィル`;
+
+  // 0件でも呼ばれうる（全機能が失敗したランなど）。`undefined ほか -1 件` を出さない
+  if (titles.length === 0) return `docs: ${suffix}`;
+
+  const subject = titles.length === 1 ? titles[0] : `${titles[0]} ほか ${titles.length - 1} 件`;
+  return `docs: ${subject}（${suffix}）`;
+}
+
+/** 冒頭の説明。ここだけが出どころによって変わる */
+function introLines(source: DocsPrSource): string[] {
+  if (source.kind === "pull-request") {
+    const pr = source.pr;
+    return [
+      `[\`${pr.repo}#${pr.number}\`](https://github.com/${pr.repo}/pull/${pr.number}) ` +
+        `のマージに伴い、機能仕様ドキュメントを更新しました。`,
+      "",
+      `> ${pr.title}`,
+      "",
+    ];
+  }
+
+  const written = source.surveyed - (source.failed ?? 0);
+  const lines = [
+    `\`${source.repo}\` のいまのコードから、機能仕様ドキュメントを書き起こしました。`,
+    "",
+    // PR に紐づかないので、代わりに「どの状態のコードを読んだか」を示す
+    source.sha
+      ? `起点: [\`${source.sha.slice(0, 7)}\`](https://github.com/${source.repo}/commit/${source.sha})`
+      : "起点: 作業ツリーの現在の状態（コミットに紐づいていません）",
+    "",
+    `列挙 ${source.surveyed} 件 / 生成 ${written} 件` +
+      (source.failed ? ` / **失敗 ${source.failed} 件**` : ""),
+  ];
+  if (source.usage) lines.push("", formatUsageSummary(source.usage));
+  if (source.failed) {
+    // 途中で終わったランを「全部そろった」と誤読させない
+    lines.push(
+      "",
+      "> ⚠️ 書けなかった機能があります。**このランだけでは全機能を網羅していません。**" +
+        "同じ設定でもう一度実行すると、書けなかったぶんを拾い直します。",
+    );
+  }
+  lines.push("");
+  return lines;
 }

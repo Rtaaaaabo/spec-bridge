@@ -4,21 +4,32 @@ import { dirname, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 import {
+  buildDocsPullRequestBody,
+  buildDocsPullRequestTitle,
   coverageLabel,
+  DocStore,
   formatQuestion,
   formatUsageSummary,
+  INDEX_PAGE,
   QUESTION_KIND_LABEL,
   QUESTION_KINDS,
+  QUESTIONS_PAGE,
   questionsOfKind,
   runBackfill,
   runPipeline,
+  type BackfillResult,
+  type DocChange,
   type RunResult,
   type UsageSummary,
 } from "@spec-bridge/core";
 import {
   checkGitHubAuthConfig,
   checkoutForAnalysis,
+  detectCheckoutState,
+  publishDocsAsPullRequest,
   createOctokit,
   createOctokitFromEnv,
   detectRepoName,
@@ -66,6 +77,7 @@ backfill — いまのコードから一式を書き起こす（初回導入用�
   --docs   <path>   機能ドキュメントの出力先ディレクトリ
   --limit  <n>      生成する機能数の上限（既定 20）
   --repo-name <org/repo>  省略時は git remote origin から推測する
+  --docs-repo <org/repo>  生成結果を docs リポジトリへ PR として提出する
 
 check-auth — GitHub の認証設定を確かめる（LLM を呼ばないので無料）
   --repo-name <org/repo>  解析対象として読めるか確かめる
@@ -84,6 +96,9 @@ check-auth — GitHub の認証設定を確かめる（LLM を呼ばないので
     --docs ~/dev/acme-specs
 
   spec-bridge backfill --repo ~/dev/acme-backend --docs ~/dev/acme-specs --limit 10
+
+  spec-bridge backfill --repo ~/dev/acme-backend --docs /tmp/specs \\
+    --repo-name acme/backend --docs-repo acme/product-specs
 
   spec-bridge check-auth --repo-name acme/backend --clone
 `;
@@ -193,6 +208,71 @@ async function runAnalyzeCommand(
   return result.failures.length > 0 ? 1 : 0;
 }
 
+/**
+ * バックフィルの結果を docs リポジトリへ PR として提出する。
+ *
+ * PR 解析の経路（`apps/webhook`）と同じ `publishDocsAsPullRequest` を使う。
+ * 違いは出どころだけで、PR に紐づかないぶん「どのコミットから起こしたか」を本文に書く。
+ */
+async function submitBackfill(
+  result: BackfillResult,
+  options: { docsPath: string; repoPath: string; repo: string; docsRepo: string },
+  log: (line: string) => void,
+): Promise<number> {
+  const { owner, repo: name } = parseRepoFullName(options.docsRepo);
+  const store = new DocStore(options.docsPath);
+
+  const changes: DocChange[] = [];
+  const files: Array<{ path: string; content: string }> = [];
+  for (const updated of result.updated) {
+    const doc = await store.get(updated.id);
+    if (!doc) continue;
+    changes.push({ doc, breakdown: updated.breakdown, warnings: updated.warnings });
+    files.push({
+      path: relative(options.docsPath, updated.path),
+      content: await readFile(updated.path, "utf8"),
+    });
+  }
+  // 一覧と確認事項のページも一緒に出す（片方だけ古いと件数が食い違う）
+  for (const page of [INDEX_PAGE, QUESTIONS_PAGE]) {
+    files.push({ path: page, content: await readFile(join(options.docsPath, page), "utf8") });
+  }
+
+  // 作業ツリーが汚れていれば、その SHA は起点として嘘になるので書かない
+  const state = await detectCheckoutState(options.repoPath);
+  if (state.dirty) {
+    log("  ⚠ 作業ツリーに未コミットの変更があります。PR には起点コミットを書きません");
+  }
+
+  const source = {
+    kind: "backfill" as const,
+    repo: options.repo,
+    sha: state.dirty ? null : state.sha,
+    surveyed: result.surveyed,
+    failed: result.failures.length,
+    usage: result.usage,
+  };
+
+  // App でも PAT でも同じ口から取る（webhook と同じ解決を通す）
+  const { octokit } = await resolveGitHubAuth().forRepo(options.docsRepo);
+
+  const published = await publishDocsAsPullRequest(
+    { owner, repo: name },
+    files,
+    {
+      title: buildDocsPullRequestTitle(source, changes),
+      body: buildDocsPullRequestBody(source, changes),
+      branchSuffix: `backfill-${parseRepoFullName(options.repo).repo}`,
+    },
+    octokit,
+  );
+
+  console.log("");
+  console.log(`✓ docs リポジトリへ提出しました: ${published.prUrl}`);
+  console.log(`  ${published.changedFiles} ファイル / ブランチ ${published.branch}`);
+  return 0;
+}
+
 async function runBackfillCommand(
   options: CliOptions,
   log: (line: string) => void,
@@ -246,6 +326,22 @@ async function runBackfillCommand(
     console.log("生成されたドキュメントはありません。");
     return 1;
   }
+
+  if (options.docsRepo) {
+    try {
+      await submitBackfill(
+        result,
+        { docsPath, repoPath, repo: repoName, docsRepo: options.docsRepo },
+        log,
+      );
+    } catch (error) {
+      // 生成物はローカルに残っている。数十分の解析を提出の失敗で捨てない
+      console.error(`\n✗ docs リポジトリへの提出に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`  生成されたドキュメントは ${docsPath} に残っています。`);
+      return 1;
+    }
+  }
+
   return result.failures.length > 0 ? 1 : 0;
 }
 

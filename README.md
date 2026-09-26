@@ -210,6 +210,12 @@ the existing one rather than duplicated, so the command is safe to re-run.
 | --- | --- |
 | `--limit` | Maximum number of features to generate (default 20) |
 | `--repo-name` | `org/repo`. Inferred from `git remote origin` when omitted; aborts if it cannot be determined |
+| `--docs-repo` | `org/repo`. **Submit the result as a pull request** against the docs repository (otherwise it only writes locally) |
+
+With `--docs-repo`, results go out through the same path as pull-request analysis. Since there is no
+source pull request, the body states **which commit the documents were written from** along with
+**surveyed / generated / failed** counts, elapsed time, and estimated cost. If the working tree has
+uncommitted changes, no origin commit is stated — that SHA would not be an honest origin.
 
 **Confidence is measured differently here.** With a pull request you can measure how much of the diff the
 agent actually read. Backfill has no diff, so it measures whether the agent actually opened the files it

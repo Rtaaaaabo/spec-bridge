@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { maskToken, parseRepoFromRemoteUrl } from "./checkout.ts";
+import { execFile } from "node:child_process";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { maskToken, parseRepoFromRemoteUrl , detectCheckoutState } from "./checkout.ts";
 
 /**
  * クローン URL にトークンを埋め込んでいるため、git の失敗メッセージが
@@ -69,4 +74,38 @@ test("GitHub 以外や解釈できない URL は null を返す（誤った帰�
   for (const url of ["", "not a url", "https://gitlab.com/acme/backend.git"]) {
     assert.equal(parseRepoFromRemoteUrl(url), null, `null を返すべき: ${url}`);
   }
+});
+
+// --- チェックアウトの状態（バックフィルの提出 PR に書く「起点」） ---
+
+const exec = promisify(execFile);
+
+async function tempRepo(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "spec-bridge-state-"));
+  await exec("git", ["-C", dir, "init", "--quiet", "-b", "main"]);
+  await exec("git", ["-C", dir, "config", "user.email", "test@example.com"]);
+  await exec("git", ["-C", dir, "config", "user.name", "test"]);
+  await writeFile(join(dir, "a.txt"), "hello\n", "utf8");
+  await exec("git", ["-C", dir, "add", "."]);
+  await exec("git", ["-C", dir, "commit", "--quiet", "-m", "init"]);
+  return dir;
+}
+
+test("HEAD の SHA と、作業ツリーが汚れていないことを返す", async () => {
+  const dir = await tempRepo();
+  const state = await detectCheckoutState(dir);
+  assert.match(state.sha ?? "", /^[0-9a-f]{40}$/);
+  assert.equal(state.dirty, false);
+});
+
+// 汚れた作業ツリーの SHA を「起点」として書くと嘘になる
+test("未コミットの変更があれば dirty を立てる", async () => {
+  const dir = await tempRepo();
+  await writeFile(join(dir, "a.txt"), "changed\n", "utf8");
+  assert.equal((await detectCheckoutState(dir)).dirty, true);
+});
+
+test("git リポジトリでなければ null を返す（推測で SHA を作らない）", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "spec-bridge-plain-"));
+  assert.deepEqual(await detectCheckoutState(dir), { sha: null, dirty: false });
 });
