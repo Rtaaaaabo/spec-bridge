@@ -27,6 +27,7 @@ import {
   FINISH_RETRY_MS,
   parseRun,
   readyToFinish,
+  runElapsedMs,
   runProgress,
   withinBudget,
   type FeatureJobResult,
@@ -78,6 +79,7 @@ export function surveyHandler(deps: BackfillHandlerDeps): JobHandler {
       return {
         surveyed: survey.features.length,
         costUsd: survey.usage.costUsd,
+        agentRuns: survey.usage.agentRuns,
         warnings: survey.warnings,
       };
     } finally {
@@ -148,6 +150,7 @@ export function featureHandler(deps: BackfillHandlerDeps): JobHandler {
       return {
         docId: result.updated.id,
         costUsd: result.usage.costUsd,
+        agentRuns: result.usage.agentRuns,
         confidence: result.updated.confidence,
         breakdown: result.updated.breakdown,
         warnings: result.updated.warnings,
@@ -219,8 +222,10 @@ export function finishHandler(deps: BackfillHandlerDeps): JobHandler {
         failed: progress.failed,
         usage: {
           costUsd: progress.costUsd,
-          agentRuns: progress.done,
-          elapsedMs: Date.now() - job.createdAt.getTime(),
+          agentRuns: progress.agentRuns,
+          // 起点はランの開始（列挙ジョブ）、終点は最後に動いた仕事。
+          // 「いま」を終点にすると、仕上げが遅れたぶん所要時間が水増しされる
+          elapsedMs: runElapsedMs(progress),
         },
       };
 
@@ -235,7 +240,14 @@ export function finishHandler(deps: BackfillHandlerDeps): JobHandler {
       );
       ctx.log(`  ✓ PR ${pr.created ? "作成" : "更新"}: ${pr.prUrl}`);
 
-      return { prUrl: pr.prUrl, generated: progress.done, failed: progress.failed, costUsd: progress.costUsd };
+      // `costUsd` はジョブ1件ぶんの費用という意味で使っているので、ラン全体には別の名前を使う
+      return {
+        prUrl: pr.prUrl,
+        generated: progress.done,
+        failed: progress.failed,
+        runCostUsd: progress.costUsd,
+        runAgentRuns: progress.agentRuns,
+      };
     } finally {
       await rm(docsDir, { recursive: true, force: true });
     }

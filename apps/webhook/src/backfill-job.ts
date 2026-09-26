@@ -100,8 +100,24 @@ export interface RunProgress {
   failed: number;
   /** まだ終わっていない機能（queued / running） */
   pending: number;
-  /** ここまでに使った額 */
+  /**
+   * ここまでに使った額。**列挙（survey）のぶんも含む。**
+   *
+   * 機能ジョブだけを足すと、実測として外に出す数字が過少になる
+   * （実際に踏んだ: 列挙 $0.27 が PR 本文に載っていなかった）。
+   */
   costUsd: number;
+  /** エージェントを呼んだ回数。ジョブ数ではない */
+  agentRuns: number;
+  /** ランの開始時刻（列挙ジョブが積まれた時刻）。所要時間の起点 */
+  startedAt: Date | null;
+  /**
+   * 最後に仕事が動いた時刻。所要時間の終点。
+   *
+   * 「いま」を終点にすると、仕上げが待ち合わせや再試行で遅れたぶんだけ所要時間が水増しされる
+   * （実際に踏んだ: 手で仕上げを回し直したら 4分24秒 が 12分27秒 になった）。
+   */
+  finishedAt: Date | null;
 }
 
 /**
@@ -111,8 +127,9 @@ export interface RunProgress {
  * 機能ジョブが成功時に `costUsd` を結果へ入れるので、それを足すだけで予算が分かる。
  */
 export async function runProgress(store: JobStore, runId: string): Promise<RunProgress> {
-  const siblings = await store.find({
-    kinds: [BACKFILL_FEATURE],
+  // 件数は機能ジョブだけを数え、消費量はランの全ジョブから足す
+  const jobs = await store.find({
+    kinds: [BACKFILL_SURVEY, BACKFILL_FEATURE],
     payloadMatch: { runId },
   });
 
@@ -120,19 +137,28 @@ export async function runProgress(store: JobStore, runId: string): Promise<RunPr
   let failed = 0;
   let pending = 0;
   let costUsd = 0;
+  let agentRuns = 0;
+  let startedAt: Date | null = null;
+  let finishedAt: Date | null = null;
 
-  for (const job of siblings) {
-    if (job.state === "succeeded") {
-      done += 1;
-      const cost = job.result?.["costUsd"];
-      if (typeof cost === "number") costUsd += cost;
-    } else if (job.state === "failed") {
-      failed += 1;
-    } else {
-      pending += 1;
+  for (const job of jobs) {
+    costUsd += numberOr(job.result?.["costUsd"], 0);
+    agentRuns += numberOr(job.result?.["agentRuns"], 0);
+    if (!finishedAt || job.updatedAt > finishedAt) finishedAt = job.updatedAt;
+
+    if (job.kind === BACKFILL_SURVEY) {
+      startedAt = job.createdAt;
+      continue;
     }
+    if (job.state === "succeeded") done += 1;
+    else if (job.state === "failed") failed += 1;
+    else pending += 1;
   }
-  return { done, failed, pending, costUsd };
+  return { done, failed, pending, costUsd, agentRuns, startedAt, finishedAt };
+}
+
+function numberOr(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 /**
@@ -156,6 +182,12 @@ export function readyToFinish(progress: RunProgress): boolean {
 
 /** 仕上げを待たせる間隔 */
 export const FINISH_RETRY_MS = 30_000;
+
+/** ランの実時間。起点も終点も分からなければ 0 */
+export function runElapsedMs(progress: RunProgress): number {
+  if (!progress.startedAt || !progress.finishedAt) return 0;
+  return Math.max(0, progress.finishedAt.getTime() - progress.startedAt.getTime());
+}
 
 /** ジョブの結果に入れる、機能1件ぶんの記録 */
 export interface FeatureJobResult extends Record<string, unknown> {
