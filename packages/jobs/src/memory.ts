@@ -1,5 +1,5 @@
 import { DEFAULT_MAX_ATTEMPTS, type EnqueueResult, type Job, type JobInput } from "./types.ts";
-import type { ClaimOptions, JobStore } from "./store.ts";
+import type { ClaimOptions, JobQuery, JobStore } from "./store.ts";
 
 /**
  * メモリ上のジョブ置き場。
@@ -118,6 +118,19 @@ export class MemoryJobStore implements JobStore {
 
   async get(id: string): Promise<Job | null> {
     return this.jobs.get(id) ?? null;
+  }
+
+  async find(query: JobQuery): Promise<Job[]> {
+    const matches = [...this.jobs.values()]
+      .filter((job) => !query.kinds || query.kinds.includes(job.kind))
+      .filter((job) => !query.states || query.states.includes(job.state))
+      .filter((job) =>
+        Object.entries(query.payloadMatch ?? {}).every(
+          ([key, value]) => job.payload[key] === value,
+        ),
+      )
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    return query.limit ? matches.slice(0, query.limit) : matches;
   }
 
   async close(): Promise<void> {}

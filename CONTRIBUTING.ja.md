@@ -19,6 +19,7 @@ cp .env.example .env
 | `pnpm analyze --pr <PR> --repo <path> --docs <path>` | PR を1件解析 |
 | `pnpm web` | CX サポートデスク画面 |
 | `pnpm webhook` / `pnpm worker` | webhook の受信 / 積まれたジョブの実行（`DATABASE_URL` が必要） |
+| `pnpm backfill-run --repo <org/repo>` | バックフィルを機能ごとのジョブとして積む |
 
 ## このプロジェクトで守っていること
 

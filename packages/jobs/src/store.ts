@@ -1,10 +1,23 @@
-import type { EnqueueResult, Job, JobInput } from "./types.ts";
+import type { EnqueueResult, Job, JobInput, JobState } from "./types.ts";
 
 export interface ClaimOptions {
   /** 取得したジョブを何ミリ秒ぶん占有するか。処理中は `heartbeat` で延長する */
   leaseMs: number;
   /** 指定した種類だけを取る。省略すると全種類 */
   kinds?: string[];
+}
+
+export interface JobQuery {
+  kinds?: string[];
+  states?: JobState[];
+  /**
+   * payload がこの組を含むジョブだけを返す（部分一致）。
+   *
+   * 用途は「同じランの兄弟ジョブを探す」こと。バックフィルは機能ごとにジョブを分けるので、
+   * 予算の積み上げと、最後の仕上げを待ち合わせるのに要る。
+   */
+  payloadMatch?: Record<string, unknown>;
+  limit?: number;
 }
 
 /**
@@ -34,6 +47,9 @@ export interface JobStore {
   fail(id: string, error: string, retry?: { runAfter: Date }): Promise<void>;
 
   get(id: string): Promise<Job | null>;
+
+  /** 条件に合うジョブを返す。並びは作成順 */
+  find(query: JobQuery): Promise<Job[]>;
 
   close(): Promise<void>;
 }

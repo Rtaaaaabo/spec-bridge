@@ -14,7 +14,8 @@
     "test": "tsx --test \"packages/**/*.test.ts\" \"apps/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm --filter @spec-bridge/web exec tsc --noEmit -p tsconfig.json",
     "webhook": "pnpm --filter @spec-bridge/webhook dev",
-    "worker": "pnpm --filter @spec-bridge/webhook worker"
+    "worker": "pnpm --filter @spec-bridge/webhook worker",
+    "backfill-run": "pnpm --filter @spec-bridge/webhook backfill-run"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
