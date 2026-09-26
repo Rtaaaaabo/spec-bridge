@@ -111,6 +111,9 @@ GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/your-app.private-key.pem
 App 運用にすると、PAT 運用と比べて次が変わります。
 
 - トークンが**インストール先のリポジトリに限定**される（PAT は持ち主の権限がそのまま効く）
+- docs リポジトリに作られる PR の**作成者が App 自身**（`app/<slug>`）になる。
+  PAT 運用ではトークンの持ち主名義だった。生成物であることが一目で分かり、
+  自分の PR を自分で承認する形にもならない
 - レート制限が **installation ごとに 5,000/時**（PAT は1本を全用途で共有）
 - 解析対象リポジトリ用と docs リポジトリ用で**別のトークン**になる。
   取り違えを防ぐため、`fetchPullRequest` と `publishDocsAsPullRequest` は認証を必須の引数で受けます

@@ -109,6 +109,8 @@ GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/your-app.private-key.pem
 Compared with a PAT, installation tokens mean:
 
 - the token is **scoped to the repositories the App is installed on** (a PAT carries your own access)
+- pull requests in the docs repository are **authored by the App itself** (`app/<slug>`) rather than by the
+  token's owner — the provenance is visible at a glance, and nobody ends up approving their own pull request
 - rate limits are **5,000/hour per installation** (one PAT shares a single budget)
 - the analyzed repository and the docs repository get **separate tokens** — which is why
   `fetchPullRequest` and `publishDocsAsPullRequest` take credentials as a required argument
