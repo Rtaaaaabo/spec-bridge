@@ -73,6 +73,167 @@ function sanitizeBranchSegment(value: string): string {
     .slice(0, 60);
 }
 
+/** ブランチの先端 SHA。存在しなければ null */
+async function branchHeadSha(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  branch: string,
+): Promise<string | null> {
+  try {
+    const ref = await octokit.rest.git.getRef({ owner, repo, ref: `heads/${branch}` });
+    return ref.data.object.sha;
+  } catch (error) {
+    if ((error as { status?: number }).status === 404) return null;
+    throw error;
+  }
+}
+
+export interface CommitResult {
+  branch: string;
+  commitSha: string;
+  /** そのブランチを今回作ったか */
+  createdBranch: boolean;
+}
+
+/**
+ * ファイル一式を1コミットにまとめてブランチへ積む。
+ *
+ * ブランチが無ければベースから作る。**あれば、その先端に積み増す。**
+ * バックフィルは機能ごとに別プロセス（別ジョブ）で書くので、
+ * 1本のブランチに少しずつ積めることが要る。
+ *
+ * blob → tree → commit の順に作るので、1コミットに全ファイルが入り、
+ * 中途半端な状態が残らない。
+ */
+export async function commitFilesToBranch(
+  target: DocsRepoTarget,
+  options: { branch: string; files: PublishFile[]; message: string },
+  octokit: Octokit,
+): Promise<CommitResult> {
+  if (options.files.length === 0) {
+    throw new Error("コミットするファイルが1件もありません");
+  }
+  const { owner, repo } = target;
+
+  let head = await branchHeadSha(octokit, owner, repo, options.branch);
+  const createdBranch = head === null;
+
+  if (head === null) {
+    const base =
+      target.baseBranch ?? (await octokit.rest.repos.get({ owner, repo })).data.default_branch;
+    const baseSha = await resolveBaseSha(octokit, owner, repo, base);
+    await octokit.rest.git.createRef({
+      owner,
+      repo,
+      ref: `refs/heads/${options.branch}`,
+      sha: baseSha,
+    });
+    head = baseSha;
+  }
+
+  const blobs = await Promise.all(
+    options.files.map(async (file) => {
+      const blob = await octokit.rest.git.createBlob({
+        owner,
+        repo,
+        content: Buffer.from(file.content, "utf8").toString("base64"),
+        encoding: "base64",
+      });
+      return { path: file.path, sha: blob.data.sha };
+    }),
+  );
+
+  const headCommit = await octokit.rest.git.getCommit({ owner, repo, commit_sha: head });
+
+  const tree = await octokit.rest.git.createTree({
+    owner,
+    repo,
+    base_tree: headCommit.data.tree.sha,
+    tree: blobs.map((b) => ({
+      path: b.path,
+      mode: "100644" as const,
+      type: "blob" as const,
+      sha: b.sha,
+    })),
+  });
+
+  const commit = await octokit.rest.git.createCommit({
+    owner,
+    repo,
+    message: options.message,
+    tree: tree.data.sha,
+    parents: [head],
+  });
+
+  await octokit.rest.git.updateRef({
+    owner,
+    repo,
+    ref: `heads/${options.branch}`,
+    sha: commit.data.sha,
+  });
+
+  return { branch: options.branch, commitSha: commit.data.sha, createdBranch };
+}
+
+export interface EnsurePullRequestResult {
+  prNumber: number;
+  prUrl: string;
+  /** 今回作ったか（既にあった PR を使い回した場合は false） */
+  created: boolean;
+}
+
+/**
+ * そのブランチの PR が無ければ作り、あれば本文を更新して使い回す。
+ *
+ * バックフィルは機能ごとにコミットを積むので、**PR を開くのは最後の1回**にしたい。
+ * 途中で中断して再実行した場合に PR が2つできないよう、既存を探してから作る。
+ */
+export async function ensurePullRequest(
+  target: DocsRepoTarget,
+  options: { branch: string; title: string; body: string },
+  octokit: Octokit,
+): Promise<EnsurePullRequestResult> {
+  const { owner, repo } = target;
+  const base =
+    target.baseBranch ?? (await octokit.rest.repos.get({ owner, repo })).data.default_branch;
+
+  const existing = await octokit.rest.pulls.list({
+    owner,
+    repo,
+    head: `${owner}:${options.branch}`,
+    state: "open",
+    per_page: 1,
+  });
+
+  const open = existing.data[0];
+  if (open) {
+    await octokit.rest.pulls.update({
+      owner,
+      repo,
+      pull_number: open.number,
+      title: options.title,
+      body: options.body,
+    });
+    return { prNumber: open.number, prUrl: open.html_url, created: false };
+  }
+
+  const created = await octokit.rest.pulls.create({
+    owner,
+    repo,
+    head: options.branch,
+    base,
+    title: options.title,
+    body: options.body,
+  });
+  return { prNumber: created.data.number, prUrl: created.data.html_url, created: true };
+}
+
+/** ブランチ名を作る。同じ接尾辞でも衝突しないよう時刻を混ぜる */
+export function docsBranchName(suffix: string): string {
+  return `spec-bridge/${sanitizeBranchSegment(suffix)}-${Date.now().toString(36)}`;
+}
+
 /**
  * 機能ドキュメントを docs リポジトリへ **PR として** 提出する。
  *
@@ -88,86 +249,22 @@ export async function publishDocsAsPullRequest(
   pr: { title: string; body: string; branchSuffix: string },
   octokit: Octokit,
 ): Promise<PublishResult> {
-  if (files.length === 0) {
-    throw new Error("公開するファイルが1件もありません");
-  }
-
-  const { owner, repo } = target;
-
-  const base =
-    target.baseBranch ??
-    (await octokit.rest.repos.get({ owner, repo })).data.default_branch;
-
-  const baseSha = await resolveBaseSha(octokit, owner, repo, base);
-
-  const branch = `spec-bridge/${sanitizeBranchSegment(pr.branchSuffix)}-${Date.now().toString(36)}`;
-
-  await octokit.rest.git.createRef({
-    owner,
-    repo,
-    ref: `refs/heads/${branch}`,
-    sha: baseSha,
-  });
-
-  // blob → tree → commit の順に作る。1コミットに全ファイルが入るので中途半端な状態が残らない
-  const blobs = await Promise.all(
-    files.map(async (file) => {
-      const blob = await octokit.rest.git.createBlob({
-        owner,
-        repo,
-        content: Buffer.from(file.content, "utf8").toString("base64"),
-        encoding: "base64",
-      });
-      return { path: file.path, sha: blob.data.sha };
-    }),
+  const branch = docsBranchName(pr.branchSuffix);
+  const commit = await commitFilesToBranch(
+    target,
+    { branch, files, message: pr.title },
+    octokit,
+  );
+  const created = await ensurePullRequest(
+    target,
+    { branch: commit.branch, title: pr.title, body: pr.body },
+    octokit,
   );
 
-  const baseCommit = await octokit.rest.git.getCommit({
-    owner,
-    repo,
-    commit_sha: baseSha,
-  });
-
-  const tree = await octokit.rest.git.createTree({
-    owner,
-    repo,
-    base_tree: baseCommit.data.tree.sha,
-    tree: blobs.map((b) => ({
-      path: b.path,
-      mode: "100644" as const,
-      type: "blob" as const,
-      sha: b.sha,
-    })),
-  });
-
-  const commit = await octokit.rest.git.createCommit({
-    owner,
-    repo,
-    message: pr.title,
-    tree: tree.data.sha,
-    parents: [baseSha],
-  });
-
-  await octokit.rest.git.updateRef({
-    owner,
-    repo,
-    ref: `heads/${branch}`,
-    sha: commit.data.sha,
-  });
-
-  const created = await octokit.rest.pulls.create({
-    owner,
-    repo,
-    head: branch,
-    base,
-    title: pr.title,
-    body: pr.body,
-  });
-
   return {
-    prNumber: created.data.number,
-    prUrl: created.data.html_url,
-    branch,
+    prNumber: created.prNumber,
+    prUrl: created.prUrl,
+    branch: commit.branch,
     changedFiles: files.length,
   };
 }

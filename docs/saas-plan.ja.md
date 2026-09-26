@@ -120,19 +120,21 @@ export async function backfillOneFeature(feature: SurveyedFeature, options: Back
 - **ランごとの予算上限（`budgetUsd`）を最初から入れる。** 12機能で $20 前後になるので、
   誰かに触らせる前に必須。超えたら残りの機能ジョブを積まずに `finish` へ落とす
 
-## 4. 提出：backfill の結果を PR にする（未着手）
+## 4. 提出：backfill の結果を PR にする（実装済み）
 
-`publishDocsAsPullRequest` は出所に依存していませんが、`buildDocsPullRequestBody` が
-`sourcePr: PullRequestInput` を必須にしているため、いまは backfill 結果を PR にできません。
+`buildDocsPullRequestBody` が `sourcePr: PullRequestInput` を必須にしていたため、
+backfill の結果はローカルディレクトリにしか書けなかった。出どころを `DocsPrSource`
+（`{ kind: "pull-request", pr } | { kind: "backfill", repo, sha, surveyed, failed, usage }`）に
+一般化し、冒頭の段落とタイトルだけを分岐させた。確度の内訳・警告・確認事項は共有している。
 
-- 入力を `ChangeSource` と同じ形に一般化する
-  （`{ kind: "pull-request", pr } | { kind: "backfill", repo, sha, surveyed, usage }`）。
-  冒頭の段落とタイトルだけを分岐させ、確度の内訳・警告・確認事項のセクションは共有する。
-  既存の2関数は薄いラッパとして残してテストを通す
-- `docs-repo.ts` から `commitFilesToBranch` と `ensurePullRequest` を切り出す。
-  backfill は「機能ごとに commit → 最後に PR を1つ」で同じ部品を使う
-- backfill の PR 本文には、PR 参照の代わりに
-  **どのコミットから起こしたか（sha）／列挙 N 件・生成 M 件・失敗 K 件／所要時間と推定コスト**を出す。
-  途中で終わったランを人が見て分かるようにするため
-- 副産物として `preserveDocs`（`~/.spec-bridge/failed/`、削除されない）が不要になる。
-  成功した機能はその時点でブランチに乗っているため
+- `pnpm backfill --docs-repo org/repo` で、PR 解析と同じ経路に載る
+- backfill の本文には、PR 参照の代わりに**起点のコミット／列挙 N 件・生成 M 件・失敗 K 件／
+  所要時間と推定コスト**を出す。失敗があれば「このランだけでは全機能を網羅していません」と明記する
+- **作業ツリーが汚れていれば起点のコミットを書かない**（`detectCheckoutState`）。
+  その SHA は起点として嘘になる
+- `docs-repo.ts` から `commitFilesToBranch` と `ensurePullRequest` を切り出した。
+  **1本のブランチに積み増して PR は1つ**にできるので、機能ごとに別ジョブで書く形（上の3）に載る
+
+残り: 機能ごとのジョブ分割（`backfill.survey` / `feature` / `finish`）と、ランの予算上限。
+分割が入れば `preserveDocs`（`~/.spec-bridge/failed/`、削除されない）も不要になる
+（成功した機能はその時点でブランチに乗るため）。

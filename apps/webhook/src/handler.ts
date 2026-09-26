@@ -170,8 +170,8 @@ export async function handleMergedPullRequest(
       { owner: docsOwner, repo: docsRepoName, baseBranch: config.docsBaseBranch },
       files,
       {
-        title: buildDocsPullRequestTitle(pr, changes),
-        body: buildDocsPullRequestBody(pr, changes),
+        title: buildDocsPullRequestTitle({ kind: "pull-request", pr }, changes),
+        body: buildDocsPullRequestBody({ kind: "pull-request", pr }, changes),
         branchSuffix: `${repo}-${event.number}`,
       },
       docs.octokit,
