@@ -1,6 +1,6 @@
 # SaaS 化の設計メモ
 
-**これは進行中の設計記録です。** 実装済みなのは「1. 認証」だけで、2〜4 は未着手です。
+**これは進行中の設計記録です。** 実装済みは「1. 認証」と「3. ジョブ」の土台で、2（画面）と 4（提出の一般化）は未着手です。
 確定した設計と、その選択理由（あとから読んで判断を蒸し返さないための根拠）を置きます。
 
 いまの CLI / webhook の使い方は [github-app-setup.ja.md](github-app-setup.ja.md) を参照してください。
@@ -68,9 +68,26 @@ App 運用では docs リポジトリにも App を入れる必要がありま�
 
 テーブルは最小5つ: `tenants` / `installations` / `repos` / `docs_targets` / `jobs`。
 
-## 3. ジョブ：backfill を分割して実行する（未着手）
+## 3. ジョブ：backfill を分割して実行する（土台は実装済み）
 
-キューは **`jobs` 表 + `FOR UPDATE SKIP LOCKED` のポーリング**。
+キューは **`jobs` 表 + `FOR UPDATE SKIP LOCKED` のポーリング**（`packages/jobs`）。
+PR 解析（`analyze.pr`）を先にこの仕組みへ載せ替えた。webhook は署名を検証して**積むだけ**になり、
+実行は `pnpm worker` が行う。backfill の3分割はこの土台の上に乗せる。
+
+実装したもの:
+
+- `packages/jobs/src/store.ts` — 置き場所の口。Postgres 実装（本番）とメモリ実装（テストと、
+  DB を用意していないローカル）を差し替える
+- `packages/jobs/src/worker.ts` — 取り出し → 実行 → 成否の記録。処理中はハートビートでリースを延ばす
+- `packages/jobs/src/retry.ts` — **待てば直るものだけ**再試行する判定（利用上限・429・5xx など）と
+  指数バックオフ + ジッタ
+- `apps/webhook/src/worker.ts` — `analyze.pr` の処理（`handleMergedPullRequest` を呼ぶ）
+
+**`dedupe_key` の一意制約が「再送で PR が2つできる」を塞いだ。**
+判定に `xmax = 0` を使うと「もともと queued」と「failed から復活」が区別できず、
+重複を「積んだ」と報告してしまう（実 DB で踏んだ）。CTE で実行前の状態を取って判定している。
+
+残りの分割:
 
 **backfill 1回を1ジョブにしない。** 3種類に割ります。
 

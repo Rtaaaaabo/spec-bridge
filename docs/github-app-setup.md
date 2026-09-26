@@ -12,6 +12,10 @@ a pull request is merged
     ↓ webhook
 spec-bridge webhook server
     ├─ verify the signature (the only authentication)
+    └─ enqueue one job and return 202 (the same merge is never enqueued twice)
+    ↓
+spec-bridge worker (separate process)
+    ├─ claim one job
     ├─ resolve credentials per repository (App: exchange for an installation token)
     ├─ shallow-clone the analyzed repository into a temp directory
     ├─ classify → analyze (only if the change affects the spec)
@@ -20,6 +24,9 @@ spec-bridge webhook server
     ↓
 a human reviews and merges  ← this is the approval gate
 ```
+
+**Receiving and running are separate.** Analysis takes minutes; running it in the receiving process
+means work is lost on restart and concurrent merges queue up behind each other.
 
 **Source code only ever lands in a temp directory and is deleted afterwards.**
 
@@ -181,15 +188,33 @@ https://xxxx-yyyy.trycloudflare.com/webhooks/github
 
 ## 5. Start the server
 
+Jobs live in Postgres. Add the connection string to `.env`:
+
 ```bash
-pnpm webhook
+DATABASE_URL=postgres://user@localhost:5432/spec_bridge
 ```
 
+The table is created on startup (`packages/jobs/src/schema.sql`).
+
+Run the two processes:
+
+```bash
+pnpm webhook   # receive and enqueue
+pnpm worker    # run the queued jobs
 ```
+
+For local use, `SPEC_BRIDGE_INLINE_WORKER=1 pnpm webhook` runs both in one process.
+
+> ⚠️ Without `DATABASE_URL`, jobs are kept in memory: they are lost on restart and never reach a separate
+> `pnpm worker` process. The startup log warns about this.
+
+```
+ジョブの置き場所: Postgres
 spec-bridge webhook listening on http://localhost:3939
   POST /webhooks/github
   docs repository: your-org/your-product-specs
   GitHub auth: GitHub App (installation token)
+  ジョブの実行は別プロセスです: pnpm worker
 ```
 
 If required environment variables are missing, it exits at startup and tells you which ones. **The last
@@ -202,9 +227,16 @@ curl http://localhost:3939/health
 # {"ok":true,"docsRepo":"your-org/your-product-specs"}
 ```
 
-Then merge a small pull request in an analyzed repository. You should see:
+Then merge a small pull request in an analyzed repository. The webhook only acknowledges it:
 
 ```
+[webhook] acme/backend#123 → ジョブを積みました: 3f7c...
+```
+
+The work itself shows up in the worker's log:
+
+```
+▸ analyze.pr analyze.pr:acme/backend#123:9fbe…（1 回目）
 ▸ acme/backend#123 feat: ... (8 files)
   docs repository credentials checked (app)
   fetched 3 existing documents from the docs repository
@@ -212,6 +244,13 @@ Then merge a small pull request in an analyzed repository. You should see:
   → affects the spec: ...
 ▸ analyzing "..."…
   ✓ pull request opened: https://github.com/your-org/your-product-specs/pull/1
+  ✓ 完了
+```
+
+The queue is also just a table:
+
+```sql
+select kind, state, attempts, left(last_error, 80), created_at from jobs order by created_at desc;
 ```
 
 Pull requests that don't affect the spec (dependency bumps and similar) are skipped at classification and
@@ -226,6 +265,9 @@ produce no pull request.
 | Log says `GitHub App が <repo> にインストールされていません` ("the App is not installed on \<repo\>") | The App isn't installed on that repository — the docs repository needs it too (step 2.7) |
 | Startup says `秘密鍵がありません` ("no private key") | Only `GITHUB_APP_ID` is set. Provide the private key, or drop the App settings and use a PAT |
 | `{"ignored":true}` | Anything other than a merged pull request is ignored by design |
+| `{"duplicate":true}` | A job for that merge already exists — redeliveries cannot produce a second pull request |
+| 202 but nothing happens | `pnpm worker` isn't running. Check for rows left `queued` in `jobs` |
+| Jobs pile up as `queued` | The worker died. Expired leases are reclaimed the next time it starts |
 | Merging a generated PR produces another PR | `SPEC_BRIDGE_DOCS_REPO` doesn't match the docs repository, so the loop guard can't match it |
 | Analysis never starts | Classification skipped it. Check the reason in the log |
 
@@ -233,7 +275,7 @@ The App's **Advanced** tab shows delivered webhooks and lets you **Redeliver** t
 
 ## Not implemented yet
 
-- **No queue.** The process that receives the request performs the analysis. Concurrent merges will back
-  up; production use needs something like Trigger.dev
-- **No retries.** If a run fails, redeliver it from the App's Advanced tab. Generated documents are
-  preserved under `~/.spec-bridge/failed/`, so the analysis itself is not lost
+- **One job at a time.** A worker processes a single job per process. To go wider, start several
+  `pnpm worker` processes — they don't contend for the same row
+- **A single tenant.** `SPEC_BRIDGE_DOCS_REPO` is the only "tenant configuration", and every job carries
+  `tenant_id = local`

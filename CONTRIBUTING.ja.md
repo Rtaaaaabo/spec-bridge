@@ -18,6 +18,7 @@ cp .env.example .env
 | `pnpm check-auth` | GitHub の認証設定を確認（LLM を呼ばないので無料） |
 | `pnpm analyze --pr <PR> --repo <path> --docs <path>` | PR を1件解析 |
 | `pnpm web` | CX サポートデスク画面 |
+| `pnpm webhook` / `pnpm worker` | webhook の受信 / 積まれたジョブの実行（`DATABASE_URL` が必要） |
 
 ## このプロジェクトで守っていること
 
