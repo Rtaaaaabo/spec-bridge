@@ -80,6 +80,21 @@ paths, so those citations must be left alone rather than treated as fabrications
 This was a real regression: source verification ran against the currently checked-out repository only,
 which silently deleted backend-derived content. Regression tests live in `confidence.test.ts`.
 
+### 6. GitHub credentials are passed in, never defaulted from `process.env`
+
+**Do not write `createOctokit(token = process.env.GITHUB_TOKEN)`.** With a default like that, forgetting to
+pass credentials is not an error — the call silently runs on the process-wide credential. Where credentials
+differ per tenant, that means *acting as a different tenant*.
+
+- Functions that take credentials (`createOctokit`, `fetchPullRequest`, `publishDocsAsPullRequest`) take
+  them as a **required** argument
+- Reading the environment happens only in `createOctokitFromEnv()`, called explicitly (single-tenant CLI)
+- Per-repository resolution goes through `GitHubAuth.forRepo()`
+  ([`packages/github/src/app-auth.ts`](packages/github/src/app-auth.ts)) — the analyzed repository and the
+  docs repository can be separate installations, and therefore separate tokens
+- Half-configured App credentials (an ID with no key, or the reverse) fail at startup rather than falling
+  back to the PAT. "I configured the App but it was really running on the PAT" is invisible to operators
+
 ## Testing policy
 
 Tests cover the parts that **don't depend on model output**: deterministic Markdown rendering, merge

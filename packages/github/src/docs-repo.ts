@@ -1,5 +1,4 @@
-import { Octokit } from "octokit";
-import { createOctokit } from "./index.ts";
+import type { Octokit } from "./octokit.ts";
 
 export interface DocsRepoTarget {
   owner: string;
@@ -79,12 +78,15 @@ function sanitizeBranchSegment(value: string): string {
  *
  * 直接 push しないのが要点。生成物は `status: draft`（AI生成・未レビュー）なので、
  * 人間のレビューを経て初めてマージされる。この PR が承認フローそのものになる。
+ *
+ * `octokit` は必須。**docs リポジトリを触る認証は、解析対象リポジトリのものとは別**で、
+ * 既定値で env から作ると取り違えに気づけない（`octokit.ts` の `createOctokit` 参照）。
  */
 export async function publishDocsAsPullRequest(
   target: DocsRepoTarget,
   files: PublishFile[],
   pr: { title: string; body: string; branchSuffix: string },
-  octokit: Octokit = createOctokit(),
+  octokit: Octokit,
 ): Promise<PublishResult> {
   if (files.length === 0) {
     throw new Error("公開するファイルが1件もありません");

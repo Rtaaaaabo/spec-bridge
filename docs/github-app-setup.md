@@ -12,6 +12,7 @@ a pull request is merged
     ↓ webhook
 spec-bridge webhook server
     ├─ verify the signature (the only authentication)
+    ├─ resolve credentials per repository (App: exchange for an installation token)
     ├─ shallow-clone the analyzed repository into a temp directory
     ├─ classify → analyze (only if the change affects the spec)
     ├─ open a pull request against the docs repository
@@ -58,14 +59,20 @@ These steps require a browser.
 
 4. Under "Subscribe to events", check **Pull request**
 5. "Where can this GitHub App be installed?" — "Only on this account" is enough
-6. After creating it, note the **App ID**
-7. From **Install App** in the sidebar, install it on **the repositories you want analyzed — and only
-   those**
+6. After creating it:
+   - note the **App ID**
+   - click **Generate a private key** and download the `.pem`
+7. From **Install App** in the sidebar, install it on **the repositories you want analyzed**. If you run
+   with installation tokens (the recommended setup in step 3), install it on **the docs repository too** —
+   writes to the docs repository use that token as well
 
-> ⚠️ **Do not install the App on your docs repository.**
-> If you do, merging a generated pull request fires a webhook, which analyzes the docs repository itself
-> and opens another pull request — indefinitely. Writes to the docs repository use `GITHUB_TOKEN`, so the
-> App is not needed there. (The code guards against this too, but not installing it is the reliable fix.)
+> ⚠️ **With the App installed on the docs repository, the loop protection is the code guard alone.**
+> Merging a generated pull request fires a webhook that could analyze the docs repository itself and open
+> another pull request. `isDocsRepoEvent` (`packages/github/src/webhook.ts`) stops it by dropping events
+> from the repository named in `SPEC_BRIDGE_DOCS_REPO`.
+> **Make sure `SPEC_BRIDGE_DOCS_REPO` matches your docs repository exactly** (case and surrounding
+> whitespace are ignored). If you would rather not rely on that guard, leave the App off the docs
+> repository and use the PAT setup in step 3.
 
 > ⚠️ Never commit the webhook secret or a private key. `.gitignore` excludes `.env` and `.env.*`.
 
@@ -79,7 +86,8 @@ These steps require a browser.
 
 ## 3. Configure environment variables
 
-Add to `spec-bridge/.env`:
+Add to `spec-bridge/.env`. API calls authenticate either with **GitHub App installation tokens
+(recommended)** or with a **PAT**.
 
 ```bash
 # webhook
@@ -87,14 +95,27 @@ GITHUB_WEBHOOK_SECRET=<the secret from step 2>
 SPEC_BRIDGE_DOCS_REPO=<your-org>/<your-product>-specs
 PORT=3939
 
-# auth (a PAT is fine for now — installation token exchange is not implemented)
-GITHUB_TOKEN=<a PAT with Contents and Pull requests at read/write>
+# auth (recommended): exchange the App ID + private key for installation access tokens
+GITHUB_APP_ID=<the App ID from step 2>
+GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/your-app.private-key.pem
+
+# or pass the key inline, with newlines escaped as \n
+# GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----"
+
+# auth (fallback): a single PAT. Used only when no App credentials are configured
+# GITHUB_TOKEN=<a PAT with Contents and Pull requests at read/write>
 ```
 
-> **Current limitation**: the App handles webhook delivery and signature verification, but API calls use
-> `GITHUB_TOKEN` (a PAT). Exchanging the App ID and private key for an installation access token is not
-> implemented. A PAT is sufficient for a single organization; multi-tenant deployments will need the
-> exchange.
+Compared with a PAT, installation tokens mean:
+
+- the token is **scoped to the repositories the App is installed on** (a PAT carries your own access)
+- rate limits are **5,000/hour per installation** (one PAT shares a single budget)
+- the analyzed repository and the docs repository get **separate tokens** — which is why
+  `fetchPullRequest` and `publishDocsAsPullRequest` take credentials as a required argument
+
+> ⚠️ Setting `GITHUB_APP_ID` without a private key (or the reverse) **fails at startup**. It never falls
+> back to the PAT silently — "I configured the App but it was really running on the PAT" is the failure
+> you cannot see.
 
 Note that `GET /repos/...` reports `permissions.push` based on **your** access to the repository, not the
 token's granted scopes — so it is not a valid way to check whether a fine-grained PAT can write. If in
@@ -133,9 +154,11 @@ pnpm webhook
 spec-bridge webhook listening on http://localhost:3939
   POST /webhooks/github
   docs repository: your-org/your-product-specs
+  GitHub auth: GitHub App (installation token)
 ```
 
-If required environment variables are missing, it exits at startup and tells you which ones.
+If required environment variables are missing, it exits at startup and tells you which ones. **The last
+line tells you which credential is in use** (a PAT shows as `PAT (GITHUB_TOKEN)`).
 
 ## 6. Verify
 
@@ -148,6 +171,7 @@ Then merge a small pull request in an analyzed repository. You should see:
 
 ```
 ▸ acme/backend#123 feat: ... (8 files)
+  docs repository credentials checked (app)
   fetched 3 existing documents from the docs repository
 ▸ classifying whether this PR affects the spec…
   → affects the spec: ...
@@ -163,16 +187,17 @@ produce no pull request.
 | Symptom | Cause |
 | --- | --- |
 | 401 responses | `GITHUB_WEBHOOK_SECRET` doesn't match the App's configured secret |
-| 202 but no pull request appears | Check the server log. Usually insufficient `GITHUB_TOKEN` permissions |
+| 202 but no pull request appears | Check the server log. Usually missing permissions (Contents / Pull requests not at read/write) |
+| Log says `GitHub App が <repo> にインストールされていません` ("the App is not installed on \<repo\>") | The App isn't installed on that repository — the docs repository needs it too (step 2.7) |
+| Startup says `秘密鍵がありません` ("no private key") | Only `GITHUB_APP_ID` is set. Provide the private key, or drop the App settings and use a PAT |
 | `{"ignored":true}` | Anything other than a merged pull request is ignored by design |
-| Merging a generated PR produces another PR | The App is installed on the docs repository. Remove it |
+| Merging a generated PR produces another PR | `SPEC_BRIDGE_DOCS_REPO` doesn't match the docs repository, so the loop guard can't match it |
 | Analysis never starts | Classification skipped it. Check the reason in the log |
 
 The App's **Advanced** tab shows delivered webhooks and lets you **Redeliver** them.
 
 ## Not implemented yet
 
-- **Installation token exchange** — a PAT is used instead, as described above
 - **No queue.** The process that receives the request performs the analysis. Concurrent merges will back
   up; production use needs something like Trigger.dev
 - **No retries.** If a run fails, redeliver it from the App's Advanced tab. Generated documents are

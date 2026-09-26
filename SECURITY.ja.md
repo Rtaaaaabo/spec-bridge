@@ -55,16 +55,34 @@ Claude Agent SDK の `allowedTools` は**「自動承認するツール」の指
 docs リポジトリを公開設定にすると、内部構造が外部から読めます。
 **docs リポジトリは非公開にしてください。**
 
+### docs リポジトリに App を入れる場合の無限ループ
+
+生成された PR をマージすると webhook が発火し、docs リポジトリ自身を解析して次の PR を作る、
+という連鎖が起こりえます。`isDocsRepoEvent`（`packages/github/src/webhook.ts`）が
+`SPEC_BRIDGE_DOCS_REPO` と一致するリポジトリのイベントを捨てることで止めています。
+
+installation トークンで運用する場合、docs リポジトリへの書き込みにも App が必要なので、
+**このガードが唯一の防波堤になります。`SPEC_BRIDGE_DOCS_REPO` の綴りを必ず確認してください。**
+ガードに頼りたくなければ、docs リポジトリには App を入れず PAT 運用にしてください。
+
 ### 認証情報の扱い
 
 | 変数 | 内容 |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | 未設定なら Claude Code のログイン情報が使われます |
-| `GITHUB_TOKEN` | Phase 0 は読み取りのみ。`Pull requests: Read-only` + `Contents: Read-only` で足ります |
+| `GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY`（または `_PATH`） | 推奨。installation access token に交換して使います。トークンが**インストール先のリポジトリに限定**されます |
+| `GITHUB_TOKEN` | PAT 運用（App の設定が無いときのみ使用）。CLI の解析は読み取りのみ（`Pull requests` / `Contents` は Read-only で足ります）。webhook で docs リポジトリへ PR を作る場合は read/write が必要です |
+| `GITHUB_WEBHOOK_SECRET` | webhook エンドポイントの**唯一の認証**。未設定なら全リクエストを拒否します |
 
 - `.env` は `.gitignore` で除外されています（`.env.*` によりバックアップも対象）
+- **秘密鍵（`.pem`）はリポジトリに置かないでください。** `GITHUB_APP_PRIVATE_KEY_PATH` で
+  リポジトリ外の絶対パスを指すか、`GITHUB_APP_PRIVATE_KEY` に入れて `.env` で管理します
+- App の資格情報が半端（ID だけ・鍵だけ）な場合は起動時に失敗します。
+  **黙って PAT にフォールバックしません** — 意図しない認証で動くほうが危険なためです
 - GitHub トークンは**必要最小限の権限**にしてください。Fine-grained PAT では
   `All repositories` ではなく `Only select repositories` を推奨します
+- クローン URL にはトークンを埋め込むため、git の失敗メッセージは `maskToken`（`checkout.ts`）で
+  伏せてからログに出します
 
 ### 生成されたドキュメントを顧客対応に使う前に
 

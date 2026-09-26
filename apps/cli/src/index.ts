@@ -16,7 +16,13 @@ import {
   type RunResult,
   type UsageSummary,
 } from "@spec-bridge/core";
-import { detectRepoName, fetchPullRequest, parsePullRequestRef } from "@spec-bridge/github";
+import {
+  createOctokit,
+  createOctokitFromEnv,
+  detectRepoName,
+  fetchPullRequest,
+  parsePullRequestRef,
+} from "@spec-bridge/github";
 
 /**
  * .env を読み込む。ワークスペースルート → カレントディレクトリの順に探す。
@@ -139,12 +145,9 @@ async function runAnalyzeCommand(
 
   const ref = parsePullRequestRef(options.pr);
   log(`▸ PR を取得中: ${ref.owner}/${ref.repo}#${ref.number}`);
-  const pr = await fetchPullRequest(
-    ref,
-    options.token
-      ? (await import("@spec-bridge/github")).createOctokit(options.token)
-      : undefined,
-  );
+  // 認証は呼び出し側で明示する（`fetchPullRequest` に既定値を持たせない理由は octokit.ts 参照）
+  const octokit = options.token ? createOctokit(options.token) : createOctokitFromEnv();
+  const pr = await fetchPullRequest(ref, octokit);
   log(`  ${pr.title}（${pr.changedFiles.length} ファイル変更）`);
 
   const result = await runPipeline(pr, {

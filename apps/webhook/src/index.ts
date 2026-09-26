@@ -3,7 +3,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { parseMergedPullRequest, verifyWebhookSignature } from "@spec-bridge/github";
+import {
+  checkGitHubAuthConfig,
+  parseMergedPullRequest,
+  resolveGitHubAuth,
+  verifyWebhookSignature,
+} from "@spec-bridge/github";
 import { handleMergedPullRequest } from "./handler.ts";
 
 // モノレポルートの .env を読む（CLI / web と設定ファイルを1つに保つ）
@@ -39,7 +44,7 @@ app.post("/webhooks/github", async (c) => {
   }
 
   // 解析は数分かかる。GitHub は10秒で切るので、受領だけ返して裏で処理する
-  void handleMergedPullRequest(event, { docsRepo: DOCS_REPO }, (line) => console.log(line))
+  void handleMergedPullRequest(event, { docsRepo: DOCS_REPO, auth }, (line) => console.log(line))
     .then((result) => {
       console.log(`[webhook] ${event.repo}#${event.number} → ${result.status}: ${result.detail}`);
       if (result.preservedPath) {
@@ -60,7 +65,7 @@ function preflight(): string[] {
   const problems: string[] = [];
   if (!SECRET) problems.push("GITHUB_WEBHOOK_SECRET が未設定です");
   if (!DOCS_REPO) problems.push("SPEC_BRIDGE_DOCS_REPO が未設定です（例: owner/my-specs）");
-  if (!process.env.GITHUB_TOKEN) problems.push("GITHUB_TOKEN が未設定です");
+  problems.push(...checkGitHubAuthConfig());
   return problems;
 }
 
@@ -72,8 +77,15 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
+// 認証方式はプロセスの寿命で固定する。起動ログに出すのは、
+// 「App を設定したつもりで PAT で動いていた」を運用側から見えるようにするため
+const auth = resolveGitHubAuth();
+
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`spec-bridge webhook listening on http://localhost:${info.port}`);
   console.log(`  POST /webhooks/github`);
   console.log(`  docs リポジトリ: ${DOCS_REPO}`);
+  console.log(
+    `  GitHub 認証: ${auth.kind === "app" ? "GitHub App（installation トークン）" : "PAT（GITHUB_TOKEN）"}`,
+  );
 });

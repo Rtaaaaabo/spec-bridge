@@ -61,6 +61,20 @@ Agent SDK の `allowedTools` は「自動承認リスト」であって**使え�
 実際に禁止できるのは `disallowedTools` だけです（`packages/core/src/agent.ts` の `READ_ONLY_DENY_LIST`）。
 ここを緩めると、解析対象リポジトリの書き換えや、顧客のソースコードの外部送信が可能になります。
 
+### 5. GitHub の認証は呼び出し側が明示する
+
+**`process.env` を既定引数にして認証情報を読まないでください。**
+`createOctokit(token = process.env.GITHUB_TOKEN)` のような書き方だと、認証の渡し忘れがエラーにならず、
+プロセス全体のグローバルな認証情報で黙って動きます。テナントごとに認証が変わる構成では、
+これは「別のテナントとして操作する」ことになります。
+
+- 認証を受け取る関数（`createOctokit` / `fetchPullRequest` / `publishDocsAsPullRequest`）は**必須の引数**にする
+- env から作るのは `createOctokitFromEnv()` を明示的に呼んだときだけ（単一テナントの CLI 用）
+- リポジトリごとの解決は `GitHubAuth.forRepo()`（`packages/github/src/app-auth.ts`）を通す。
+  解析対象リポジトリと docs リポジトリは別のインストール＝別のトークンになりうる
+- App の資格情報が半端（ID だけ・鍵だけ）なときは、PAT にフォールバックせず起動時に失敗させる。
+  「App を設定したつもりで、実は PAT で動いていた」は運用側から気づけません
+
 ## テストの方針
 
 LLM の出力に依存しない部分（Markdown 生成、マージ、スキーマの型強制）にテストを置いています。

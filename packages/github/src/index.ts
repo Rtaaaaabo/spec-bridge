@@ -1,5 +1,5 @@
-import { Octokit } from "octokit";
 import type { PullRequestInput } from "@spec-bridge/core";
+import type { Octokit } from "./octokit.ts";
 
 export interface PullRequestRef {
   owner: string;
@@ -25,21 +25,18 @@ export function parsePullRequestRef(input: string): PullRequestRef {
   );
 }
 
-export function createOctokit(token = process.env.GITHUB_TOKEN): Octokit {
-  if (!token) {
-    throw new Error(
-      "GITHUB_TOKEN が設定されていません。.env に設定するか --token で渡してください。",
-    );
-  }
-  return new Octokit({ auth: token });
-}
-
 /** 1ファイルあたりの patch 取り込み上限。巨大な生成物で解析が溺れるのを防ぐ */
 const MAX_PATCH_CHARS = 20_000;
 
+/**
+ * PR の本文と変更ファイルを取得する。
+ *
+ * `octokit` は必須。既定で env のトークンを使うと、認証の渡し忘れが
+ * 「別テナントの認証情報で読む」に化ける（`octokit.ts` の `createOctokit` 参照）。
+ */
 export async function fetchPullRequest(
   ref: PullRequestRef,
-  octokit: Octokit = createOctokit(),
+  octokit: Octokit,
 ): Promise<PullRequestInput> {
   const { data: pr } = await octokit.rest.pulls.get({
     owner: ref.owner,
@@ -72,6 +69,8 @@ export async function fetchPullRequest(
   };
 }
 
+export * from "./octokit.ts";
+export * from "./app-auth.ts";
 export * from "./docs-repo.ts";
 export * from "./webhook.ts";
 export * from "./checkout.ts";

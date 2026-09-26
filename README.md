@@ -301,7 +301,11 @@ against the docs repository *is* the review gate: generated content is `status: 
 merges it.
 
 Setup (creating the GitHub App, permissions, tunneling to localhost) is documented in
-[docs/github-app-setup.md](docs/github-app-setup.md).
+[docs/github-app-setup.md](docs/github-app-setup.md). API calls authenticate with App installation access
+tokens (recommended) or with a PAT.
+
+The design for running this as a service (job splitting, per-tenant credentials, generalized submission)
+is recorded in [docs/saas-plan.ja.md](docs/saas-plan.ja.md) (Japanese).
 
 ## Multiple repositories
 

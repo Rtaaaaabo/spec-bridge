@@ -54,25 +54,36 @@ intentional — they are the citations.
 If your docs repository is public, your internal structure is readable by anyone. **Keep the docs
 repository private.**
 
-### Do not install the GitHub App on the docs repository
+### The docs repository and the pull request loop
 
-If you do, merging a generated pull request fires a webhook, which analyzes the docs repository itself
-and opens another pull request — repeating indefinitely.
+Merging a generated pull request fires a webhook that could analyze the docs repository itself and open
+another pull request, repeating indefinitely. `isDocsRepoEvent`
+(`packages/github/src/webhook.ts`) stops it by dropping events from the repository named in
+`SPEC_BRIDGE_DOCS_REPO`.
 
-Writes to the docs repository use `GITHUB_TOKEN`, so the App does not need to be installed there. The
-code also guards against this, but not installing it is the reliable fix.
+When you run on installation tokens, the App must be installed on the docs repository as well (that is
+what writes there), so **this guard is the only thing standing between you and the loop — check that
+`SPEC_BRIDGE_DOCS_REPO` matches your docs repository exactly.** If you would rather not rely on it, keep
+the App off the docs repository and run on a PAT.
 
 ### Credentials
 
 | Variable | Notes |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | If unset, the Claude Code login is used |
-| `GITHUB_TOKEN` | Needs `Contents` and `Pull requests` at **Read and write** for the webhook flow |
+| `GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY` (or `_PATH`) | Recommended. Exchanged for installation access tokens, which are **scoped to the repositories the App is installed on** |
+| `GITHUB_TOKEN` | PAT fallback, used only when no App credentials are set. Needs `Contents` and `Pull requests` at **Read and write** for the webhook flow |
 | `GITHUB_WEBHOOK_SECRET` | Signature verification is the **only** authentication on the webhook endpoint |
 
 - `.env` is excluded by `.gitignore` (the `.env.*` pattern also covers backups).
+- **Keep the private key (`.pem`) out of the repository.** Point `GITHUB_APP_PRIVATE_KEY_PATH` at an
+  absolute path outside it, or put the key in `GITHUB_APP_PRIVATE_KEY` in `.env`.
+- Half-configured App credentials (an ID with no key, or the reverse) fail at startup. **They never fall
+  back to the PAT silently** — running under a credential you did not intend is the worse outcome.
 - Scope the GitHub token to the minimum. With fine-grained PATs, prefer `Only select repositories` over
   `All repositories`.
+- Clone URLs embed the token, so git failure messages are masked by `maskToken` (`checkout.ts`) before
+  they reach the log.
 - If `GITHUB_WEBHOOK_SECRET` is unset, the webhook endpoint rejects **every** request rather than
   accepting unsigned ones.
 
