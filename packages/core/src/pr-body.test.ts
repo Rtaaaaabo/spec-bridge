@@ -109,11 +109,18 @@ test("警告が無ければ折りたたみを出さない", () => {
   assert.doesNotMatch(body, /<details>/);
 });
 
-test("開発者への確認事項はチェックボックスで出す", () => {
+test("開発者への確認事項はチェックボックスで、種類ごとに出す", () => {
   const c = change("invite", "メンバー招待");
-  c.doc.body.openQuestions = ["招待メールの再送仕様が不明"];
+  c.doc.body.openQuestions = [
+    { question: "招待メールの再送を上限なしにしている意図は", kind: "intent", searched: ["app/invite.rb"] },
+    { question: "再送間隔の既定値", kind: "unverified", searched: [] },
+  ];
   const body = buildDocsPullRequestBody(pr, [c]);
-  assert.match(body, /- \[ \] 招待メールの再送仕様が不明/);
+  assert.match(
+    body,
+    /\*\*聞くべきこと\*\*\n\n- \[ \] 招待メールの再送を上限なしにしている意図は（確認した箇所: `app\/invite\.rb`）/,
+  );
+  assert.match(body, /\*\*追加で調べれば埋まる可能性があるもの\*\*\n\n- \[ \] 再送間隔の既定値/);
 });
 
 test("未レビューであることが本文に明記される", () => {

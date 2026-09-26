@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { extractJson, runAgent, READ_ONLY_DENY_LIST } from "./agent.ts";
 import { isValidDocId, type FeatureDocIndexEntry } from "./types.ts";
+import type { AgentUsage } from "./usage.ts";
 
 export const SurveyedFeature = z.object({
   docId: z
@@ -29,7 +30,7 @@ export type SurveyResult = z.infer<typeof SurveyResult>;
 
 const SYSTEM = `あなたはソースコードを読み、そのプロダクトが持つ「ユーザーから見える機能」を列挙する担当です。
 
-この一覧は、CS チームと QA チームが読む機能仕様ドキュメントの目次になります。
+この一覧は、このコードを書いていない人（CS・QA、新しく加わった開発者など）が読む機能仕様ドキュメントの目次になります。
 ドキュメントを書くのは後段の別のエージェントで、あなたの仕事は**何についてドキュメントを書くべきかを決めること**です。
 
 # 何を1つの機能とみなすか
@@ -62,7 +63,7 @@ const SYSTEM = `あなたはソースコードを読み、そのプロダクト�
       "docId": null,
       "newDocId": "post-visibility",
       "title": "投稿の公開範囲",
-      "why": "投稿ごとに公開範囲を選べる。問い合わせが来やすい",
+      "why": "投稿ごとに公開範囲を選べる。権限に関わり、挙動を誤解されやすい",
       "entryPoints": ["app/posts/visibility-fields.tsx", "app/actions.ts"]
     }
   ]
@@ -78,6 +79,7 @@ export interface SurveyOptions {
   maxTurns?: number;
   allowBash?: boolean;
   onProgress?: (line: string) => void;
+  onUsage?: (usage: AgentUsage) => void;
 }
 
 export interface SurveyOutcome {
@@ -120,7 +122,7 @@ export async function surveyFeatures(
     `このリポジトリのチェックアウトが作業ディレクトリにあります。`,
     "",
     `重要度の高いものから挙げてください。${limit} 件に収まらない場合、`,
-    `顧客からの問い合わせが来やすいもの（画面・権限・課金・通知）を優先します。`,
+    `利用者から見て影響の大きいもの（画面・権限・課金・通知）を優先します。`,
     "",
     `# 既存の機能ドキュメント一覧`,
     indexText,
@@ -135,6 +137,7 @@ export async function surveyFeatures(
     disallowedTools,
     maxTurns: options.maxTurns ?? 40,
     onProgress: options.onProgress,
+    onUsage: options.onUsage,
   });
 
   const parsed = SurveyResult.safeParse(extractJson(text));

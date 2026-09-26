@@ -6,6 +6,11 @@ import { test } from "node:test";
 import { checkSources, computeConfidence, pruneInvalidSources } from "./confidence.ts";
 import { FeatureDocBody } from "./types.ts";
 
+/** 旧来のテストの確認事項（件数だけが意味を持つ）を新しい形にする */
+function unverified(...questions: string[]) {
+  return questions.map((question) => ({ question, kind: "unverified" as const, searched: [] }));
+}
+
 /** 実在するファイルを持つ一時リポジトリを作る */
 function fixtureRepo(): string {
   const root = mkdtempSync(join(tmpdir(), "spec-bridge-conf-"));
@@ -132,7 +137,7 @@ test("確度はモデルの自己申告ではなく実測から算出される",
       rules: [
         { text: "怪しい", sources: [{ repo: "a/b", file: "src/nope.ts", line: 1, pr: null }] },
       ],
-      openQuestions: ["あれもこれも不明", "これも不明", "それも不明"],
+      openQuestions: unverified("あれもこれも不明", "これも不明", "それも不明"),
     }),
     repoPath: repo,
     currentRepo: "a/b",
@@ -174,7 +179,7 @@ test("未確認事項が多いほど確定度が下がる", () => {
   const few = computeConfidence({ ...base, body: body({ openQuestions: [] }) });
   const many = computeConfidence({
     ...base,
-    body: body({ openQuestions: ["a", "b", "c", "d", "e"] }),
+    body: body({ openQuestions: unverified("a", "b", "c", "d", "e") }),
   });
   assert.ok(few.determinacy > many.determinacy);
   assert.ok(few.score > many.score);

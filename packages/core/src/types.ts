@@ -75,7 +75,7 @@ export type SpecRule = z.infer<typeof SpecRule>;
 
 export const GlossaryTerm = z.object({
   term: z.string().describe("正式な呼び方"),
-  aliases: z.array(z.string()).default([]).describe("CS / 顧客側での呼ばれ方"),
+  aliases: z.array(z.string()).default([]).describe("画面上や利用者の間での呼ばれ方"),
   codeName: z.string().nullable().default(null).describe("コード上の識別子"),
 });
 export type GlossaryTerm = z.infer<typeof GlossaryTerm>;
@@ -103,6 +103,44 @@ export const ChangelogEntry = z.object({
 });
 export type ChangelogEntry = z.infer<typeof ChangelogEntry>;
 
+/**
+ * 確認事項の種類。「分からない」にも中身の違いがある。
+ *
+ * - `intent`: コードを探したうえで、意図・運用・外部システムの挙動など、人に聞くしかないこと
+ * - `unverified`: コードを追えば分かるはずだが、今回そこまで読めなかったこと
+ * - `scope`: ドキュメントの範囲についての相談（別ドキュメントにすべきか等）
+ *
+ * 人に聞くべきなのは `intent` だけ。`unverified` をそのまま人に渡すと、
+ * 「コードを読めば分かることを聞く」ことになる。
+ */
+export const QuestionKind = z.enum(["intent", "unverified", "scope"]);
+export type QuestionKind = z.infer<typeof QuestionKind>;
+
+/**
+ * 旧形式（文字列だけ）の確認事項を読み込めるようにする。
+ *
+ * 文字列には「どこを探したか」が無いので `unverified` として扱う。
+ * 探した証拠のない「分からない」を、人に聞くべきことに格上げしない。
+ */
+function coerceOpenQuestion(value: unknown): unknown {
+  if (typeof value === "string") return { question: value, kind: "unverified", searched: [] };
+  return value;
+}
+
+export const OpenQuestion = z.preprocess(
+  coerceOpenQuestion,
+  z.object({
+    question: z.string().describe("開発者に直接聞ける疑問文。読み手向けの説明は入れない"),
+    // 未知の値や欠落は、証拠が要らない側（unverified）に倒す
+    kind: QuestionKind.catch("unverified"),
+    searched: z
+      .array(z.string())
+      .default([])
+      .describe("答えを探して Read で開いたファイル。リポジトリルートからの相対パス"),
+  }),
+);
+export type OpenQuestion = z.infer<typeof OpenQuestion>;
+
 export const DocStatus = z.enum(["draft", "verified", "stale"]);
 export type DocStatus = z.infer<typeof DocStatus>;
 
@@ -112,10 +150,10 @@ export type DocStatus = z.infer<typeof DocStatus>;
  */
 export const FeatureDocBody = z.object({
   title: z.string(),
-  summary: z.string().describe("1〜2文。CS が一覧で読む用"),
+  summary: z.string().describe("1〜2文。一覧で読む用"),
   overview: z.string().describe("専門用語を使わない機能説明"),
   userBehavior: stringArray.describe(
-    "ユーザーから見た振る舞い。CS が顧客にそのまま説明できる粒度",
+    "ユーザーから見た振る舞い。コードを読まない人がそのまま説明できる粒度",
   ),
   screens: z.array(Screen).default([]),
   endpoints: z.array(Endpoint).default([]),
@@ -133,9 +171,9 @@ export const FeatureDocBody = z.object({
     .default([]),
   testPoints: TestPoints.default({ normal: [], abnormal: [], regression: [], e2e: [] }),
   glossary: z.array(GlossaryTerm).default([]),
-  openQuestions: stringArray.describe(
-    "コードからは判断できず、開発者への確認が必要な点",
-  ),
+  openQuestions: z
+    .preprocess(coerceStringArray, z.array(OpenQuestion).default([]))
+    .describe("コードからは判断できず、開発者への確認が必要な点。種類ごとに kind を付ける"),
 });
 export type FeatureDocBody = z.infer<typeof FeatureDocBody>;
 

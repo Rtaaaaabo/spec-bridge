@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { extractJson, runAgent, NO_TOOLS_DENY_LIST } from "./agent.ts";
 import type { FeatureDocIndexEntry, PullRequestInput } from "./types.ts";
+import type { AgentUsage } from "./usage.ts";
 
 export const ClassifyResult = z.object({
   affectsSpec: z
@@ -68,6 +69,7 @@ targets は多くても3件まで。1つの PR が4つ以上の機能に跨る�
 export interface ClassifyOptions {
   model?: string;
   onProgress?: (line: string) => void;
+  onUsage?: (usage: AgentUsage) => void;
 }
 
 export async function classifyPullRequest(
@@ -115,6 +117,7 @@ export async function classifyPullRequest(
     disallowedTools: [...NO_TOOLS_DENY_LIST],
     maxTurns: 2,
     onProgress: options.onProgress,
+    onUsage: options.onUsage,
   });
 
   const parsed = ClassifyResult.safeParse(extractJson(text));
