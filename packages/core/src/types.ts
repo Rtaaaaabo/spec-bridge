@@ -75,7 +75,7 @@ export type SpecRule = z.infer<typeof SpecRule>;
 
 export const GlossaryTerm = z.object({
   term: z.string().describe("正式な呼び方"),
-  aliases: z.array(z.string()).default([]).describe("CS / 顧客側での呼ばれ方"),
+  aliases: z.array(z.string()).default([]).describe("画面上や利用者の間での呼ばれ方"),
   codeName: z.string().nullable().default(null).describe("コード上の識別子"),
 });
 export type GlossaryTerm = z.infer<typeof GlossaryTerm>;
@@ -150,10 +150,10 @@ export type DocStatus = z.infer<typeof DocStatus>;
  */
 export const FeatureDocBody = z.object({
   title: z.string(),
-  summary: z.string().describe("1〜2文。CS が一覧で読む用"),
+  summary: z.string().describe("1〜2文。一覧で読む用"),
   overview: z.string().describe("専門用語を使わない機能説明"),
   userBehavior: stringArray.describe(
-    "ユーザーから見た振る舞い。CS が顧客にそのまま説明できる粒度",
+    "ユーザーから見た振る舞い。コードを読まない人がそのまま説明できる粒度",
   ),
   screens: z.array(Screen).default([]),
   endpoints: z.array(Endpoint).default([]),
