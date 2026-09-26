@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { readOAuthConfig } from "./oauth.ts";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
@@ -25,4 +26,26 @@ export function docsPath(): string {
     );
   }
   return resolve(raw.replace(/^~(?=$|\/)/, homedir()));
+}
+
+/**
+ * セッション Cookie の署名鍵。
+ *
+ * **未設定なら例外にする。** 空鍵で署名すると、誰でも自分でセッションを作れてしまう。
+ */
+export function sessionSecret(): string {
+  ensureEnv();
+  const secret = process.env.SPEC_BRIDGE_SESSION_SECRET?.trim();
+  if (!secret) {
+    throw new Error(
+      "SPEC_BRIDGE_SESSION_SECRET が設定されていません（例: openssl rand -hex 32）。",
+    );
+  }
+  return secret;
+}
+
+/** OAuth の設定。未設定なら null（ログイン機能を出さない） */
+export function oauthConfig(): ReturnType<typeof readOAuthConfig> {
+  ensureEnv();
+  return readOAuthConfig(process.env);
 }

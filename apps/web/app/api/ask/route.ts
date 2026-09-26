@@ -1,4 +1,5 @@
 import { askSupportQuestion } from "@spec-bridge/core";
+import { currentSession } from "@/lib/auth";
 import { docsPath } from "@/lib/config";
 
 // Agent SDK は Node のネイティブバイナリを使うので Edge では動かない
@@ -6,6 +7,11 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function POST(request: Request): Promise<Response> {
+  // middleware は Cookie の有無しか見ていない。署名の検証はここで行う
+  if (!(await currentSession())) {
+    return Response.json({ error: "ログインが必要です" }, { status: 401 });
+  }
+
   let question: string;
   try {
     const body = (await request.json()) as { question?: unknown };

@@ -161,6 +161,35 @@ pnpm check-auth --repo-name <解析対象の org/repo> --clone
 > 「リポジトリが無い」と見分けがつかないので、404 が出たら
 > fine-grained PAT の対象リポジトリ、または App のインストール先を確認してください。
 
+## 3.5 画面のログインを設定する（任意）
+
+`apps/web`（CX サポートデスク / インストール一覧）には**ログインが必要**です。
+GitHub App の user-to-server OAuth を使うので、新しい App は要りません。
+
+1. App の設定画面（General）で **Callback URL** に次を登録する
+
+   ```
+   http://localhost:3000/api/github/callback
+   ```
+
+2. 同じ画面の **Client ID** を控え、**Generate a new client secret** で secret を作る
+3. `.env` に追記する
+
+   ```bash
+   SPEC_BRIDGE_SESSION_SECRET=$(openssl rand -hex 32 の結果)
+   GITHUB_APP_CLIENT_ID=<Client ID>
+   GITHUB_APP_CLIENT_SECRET=<client secret>
+   # 公開 URL が localhost 以外なら
+   # SPEC_BRIDGE_BASE_URL=https://specs.example.com
+   ```
+
+4. `pnpm web` で起動し、http://localhost:3000/ を開く（未ログインなら `/login` に飛びます）
+
+> ⚠️ `SPEC_BRIDGE_SESSION_SECRET` が未設定だと、画面は**誰も通しません**（素通しにはなりません）。
+> 署名を検証できない状態で通すと、Cookie を自作した人が入れてしまうためです。
+
+セッション Cookie に入るのは GitHub のユーザー識別子だけで、**アクセストークンは保存しません**。
+
 ## 4. ローカルで受け取れるようにする
 
 GitHub からローカルマシンへは直接届かないので、トンネルを張ります。
