@@ -17,11 +17,18 @@ import {
   type UsageSummary,
 } from "@spec-bridge/core";
 import {
+  checkGitHubAuthConfig,
+  checkoutForAnalysis,
   createOctokit,
   createOctokitFromEnv,
   detectRepoName,
   fetchPullRequest,
+  inspectApp,
   parsePullRequestRef,
+  parseRepoFullName,
+  readAppCredentials,
+  resolveGitHubAuth,
+  type GitHubAuth,
 } from "@spec-bridge/github";
 
 /**
@@ -42,8 +49,9 @@ loadEnvFile();
 const USAGE = `spec-bridge — コードから機能仕様ドキュメントを生成・更新する
 
 使い方:
-  spec-bridge analyze  --pr <PR> --repo <path> --docs <path> [options]
-  spec-bridge backfill --repo <path> --docs <path> [options]
+  spec-bridge analyze    --pr <PR> --repo <path> --docs <path> [options]
+  spec-bridge backfill   --repo <path> --docs <path> [options]
+  spec-bridge check-auth [options]
 
 analyze — マージされた PR ひとつを反映する
   --pr     <ref>    PR の URL または owner/repo#123
@@ -58,6 +66,11 @@ backfill — いまのコードから一式を書き起こす（初回導入用�
   --limit  <n>      生成する機能数の上限（既定 20）
   --repo-name <org/repo>  省略時は git remote origin から推測する
 
+check-auth — GitHub の認証設定を確かめる（LLM を呼ばないので無料）
+  --repo-name <org/repo>  解析対象として読めるか確かめる
+  --docs-repo <org/repo>  提出先として読めるか確かめる（省略時は SPEC_BRIDGE_DOCS_REPO）
+  --clone                 トークンで実際に浅いクローンができるかまで確かめる（すぐ破棄する）
+
 共通オプション:
   --allow-bash      エージェントに Bash を許可する（git log 等を辿れる）
   --quiet           進捗ログを抑制する
@@ -70,6 +83,8 @@ backfill — いまのコードから一式を書き起こす（初回導入用�
     --docs ~/dev/acme-specs
 
   spec-bridge backfill --repo ~/dev/acme-backend --docs ~/dev/acme-specs --limit 10
+
+  spec-bridge check-auth --repo-name acme/backend --clone
 `;
 
 /** 先頭の `~` をホームディレクトリへ展開して絶対パスにする */
@@ -126,8 +141,10 @@ interface CliOptions {
   token?: string;
   limit?: string;
   repoName?: string;
+  docsRepo?: string;
   force: boolean;
   allowBash: boolean;
+  clone: boolean;
 }
 
 async function runAnalyzeCommand(
@@ -231,6 +248,137 @@ async function runBackfillCommand(
   return result.failures.length > 0 ? 1 : 0;
 }
 
+/**
+ * リポジトリ1件ぶんのアクセスを確かめる。
+ *
+ * 認証の取り違えは「解析が数分走ったあとに PR 作成で落ちる」形で出るので、
+ * **その前に、使う認証そのもので API を1回叩いて確かめる**。
+ */
+async function checkRepoAccess(
+  auth: GitHubAuth,
+  fullName: string,
+  label: string,
+  options: { clone: boolean },
+): Promise<boolean> {
+  try {
+    const { owner, repo } = parseRepoFullName(fullName);
+    const { octokit, token } = await auth.forRepo(fullName);
+    const { data } = await octokit.rest.repos.get({ owner, repo });
+    console.log(
+      `✓ ${label}: ${fullName}（${data.private ? "private" : "public"} / ` +
+        `既定ブランチ ${data.default_branch}）`,
+    );
+
+    if (options.clone) {
+      // git でもそのトークンが通るかは API とは別問題（クローン URL に埋め込むため）
+      const checkout = await checkoutForAnalysis({ repo: fullName, token });
+      try {
+        console.log(`  ✓ トークンで浅いクローンができた（${checkout.path} → 破棄）`);
+      } finally {
+        await checkout.cleanup();
+      }
+    }
+    return true;
+  } catch (error) {
+    console.log(`✗ ${label}: ${fullName}`);
+    console.log(`  ${error instanceof Error ? error.message : String(error)}`);
+    // 非公開リポジトリに権限が無い場合も 404 になる。「存在しない」と見分けがつかず必ず迷うので明示する
+    if ((error as { status?: number }).status === 404) {
+      console.log(
+        "  ※ 404 は「リポジトリが無い」だけでなく「この認証情報に権限が無い」ときも返ります。" +
+          "非公開リポジトリなら、fine-grained PAT の対象リポジトリ、または App のインストール先を確認してください",
+      );
+    }
+    return false;
+  }
+}
+
+/**
+ * GitHub の認証設定を確かめる。**LLM を呼ばないので無料で何度でも回せる。**
+ *
+ * セットアップの最後に「PR をマージして待つ」より先に、ここで切り分けられるようにする。
+ */
+async function runCheckAuthCommand(options: CliOptions): Promise<number> {
+  const problems = checkGitHubAuthConfig();
+  if (problems.length > 0) {
+    console.error("認証設定に問題があります:");
+    for (const p of problems) console.error(`  - ${p}`);
+    return 1;
+  }
+
+  const auth = resolveGitHubAuth();
+  console.log(
+    `認証方式: ${auth.kind === "app" ? "GitHub App（installation トークンに交換）" : "PAT（GITHUB_TOKEN）"}`,
+  );
+  console.log("");
+
+  let ok = true;
+
+  if (auth.kind === "app") {
+    const credentials = readAppCredentials();
+    // kind が app ならここは必ず取れる（resolveGitHubAuth と同じ判定）
+    if (!credentials) throw new Error("App の資格情報を読み直せませんでした");
+    try {
+      const info = await inspectApp(credentials);
+      console.log(`✓ App: ${info.app.name}（slug ${info.app.slug} / App ID ${info.app.id}）`);
+      if (info.installations.length === 0) {
+        console.log("✗ どのアカウントにもインストールされていません（Install App から追加してください）");
+        ok = false;
+      }
+      for (const installation of info.installations) {
+        console.log(
+          `  - ${installation.account}（installation ${installation.id} / ` +
+            `対象 ${installation.repositorySelection} / ` +
+            `Contents: ${installation.permissions["contents"] ?? "なし"} / ` +
+            `Pull requests: ${installation.permissions["pull_requests"] ?? "なし"}）`,
+        );
+      }
+      // docs リポジトリへ PR を作るには両方 write が必要
+      for (const installation of info.installations) {
+        for (const [key, label] of [
+          ["contents", "Contents"],
+          ["pull_requests", "Pull requests"],
+        ] as const) {
+          if (installation.permissions[key] !== "write") {
+            console.log(
+              `  ⚠ ${installation.account}: ${label} が write ではありません` +
+                `（webhook から docs リポジトリへ PR を作るには write が必要）`,
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.log("✗ App の情報を取得できませんでした（App ID と秘密鍵の組み合わせを確認してください）");
+      console.log(`  ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
+    console.log("");
+  }
+
+  const docsRepo = options.docsRepo ?? process.env.SPEC_BRIDGE_DOCS_REPO;
+  if (docsRepo) {
+    ok = (await checkRepoAccess(auth, docsRepo, "docs リポジトリ", { clone: false })) && ok;
+  } else {
+    console.log("- docs リポジトリは未指定（SPEC_BRIDGE_DOCS_REPO か --docs-repo で確かめられます）");
+  }
+
+  if (options.repoName) {
+    ok = (await checkRepoAccess(auth, options.repoName, "解析対象", { clone: options.clone })) && ok;
+
+    if (docsRepo && options.repoName.trim().toLowerCase() === docsRepo.trim().toLowerCase()) {
+      console.log(
+        "⚠ 解析対象と docs リポジトリが同じです。webhook は自己ループ防止のためこのイベントを捨てます",
+      );
+    }
+  } else {
+    console.log("- 解析対象は未指定（--repo-name owner/repo で確かめられます）");
+  }
+
+  console.log("");
+  console.log(ok ? "結果: 使えます" : "結果: 上の ✗ を解消してください");
+  return ok ? 0 : 1;
+}
+
 async function main(): Promise<number> {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
@@ -242,6 +390,8 @@ async function main(): Promise<number> {
       token: { type: "string" },
       limit: { type: "string" },
       "repo-name": { type: "string" },
+      "docs-repo": { type: "string" },
+      clone: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
       "allow-bash": { type: "boolean", default: false },
       quiet: { type: "boolean", default: false },
@@ -250,7 +400,8 @@ async function main(): Promise<number> {
   });
 
   const command = positionals[0];
-  if (values.help || (command !== "analyze" && command !== "backfill")) {
+  const known = ["analyze", "backfill", "check-auth"];
+  if (values.help || !command || !known.includes(command)) {
     console.log(USAGE);
     return values.help ? 0 : 1;
   }
@@ -264,10 +415,13 @@ async function main(): Promise<number> {
     token: values.token,
     limit: values.limit,
     repoName: values["repo-name"],
+    docsRepo: values["docs-repo"],
     force: values.force,
     allowBash: values["allow-bash"],
+    clone: values.clone,
   };
 
+  if (command === "check-auth") return runCheckAuthCommand(options);
   return command === "analyze"
     ? runAnalyzeCommand(options, log)
     : runBackfillCommand(options, log);

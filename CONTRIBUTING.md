@@ -15,6 +15,7 @@ cp .env.example .env
 | --- | --- |
 | `pnpm test` | Tests — no LLM calls, so they're fast and free |
 | `pnpm typecheck` | Type checking across core / cli / web |
+| `pnpm check-auth` | Verify GitHub credentials (no LLM calls, free) |
 | `pnpm analyze --pr <PR> --repo <path> --docs <path>` | Analyze a single pull request |
 | `pnpm web` | The support desk UI |
 | `pnpm webhook` | The GitHub App webhook server |

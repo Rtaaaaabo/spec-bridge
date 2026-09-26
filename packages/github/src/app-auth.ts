@@ -225,6 +225,57 @@ export function createAppInstallationAuth(credentials: AppCredentials): GitHubAu
   };
 }
 
+/** `inspectApp` が返すインストール1件ぶんの情報 */
+export interface AppInstallationInfo {
+  id: number;
+  /** インストール先のアカウント（取得できなければ `?`） */
+  account: string;
+  /** `all` か `selected` */
+  repositorySelection: string;
+  /** 付与されている権限（`contents: "write"` など） */
+  permissions: Record<string, string>;
+}
+
+export interface AppInfo {
+  app: { id: number; slug: string; name: string };
+  installations: AppInstallationInfo[];
+}
+
+/**
+ * App 自身とインストール状況を取得する。**設定の切り分け専用**（`spec-bridge check-auth`）。
+ *
+ * 「App を作ったが対象リポジトリに入れていない」「Contents が read のまま」といった
+ * 設定漏れは、解析を1回流すより先に分かるほうが安い。
+ */
+export async function inspectApp(credentials: AppCredentials): Promise<AppInfo> {
+  const app = new App({ appId: credentials.appId, privateKey: credentials.privateKey });
+
+  const self = await app.octokit.rest.apps.getAuthenticated();
+  const installations = await app.octokit.paginate(app.octokit.rest.apps.listInstallations, {
+    per_page: 100,
+  });
+
+  return {
+    app: {
+      id: self.data?.id ?? Number(credentials.appId),
+      slug: self.data?.slug ?? "",
+      name: self.data?.name ?? "",
+    },
+    installations: installations.map((installation) => {
+      // account は User / Organization / Enterprise で形が違い、null もありうる
+      const account = installation.account as { login?: string; name?: string } | null;
+      return {
+        id: installation.id,
+        account: account?.login ?? account?.name ?? "?",
+        repositorySelection: installation.repository_selection ?? "?",
+        permissions: Object.fromEntries(
+          Object.entries(installation.permissions ?? {}).map(([k, v]) => [k, String(v)]),
+        ),
+      };
+    }),
+  };
+}
+
 /**
  * env から認証方式を決める。App の資格情報があればそれを使い、無ければ PAT。
  *

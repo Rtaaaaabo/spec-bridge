@@ -121,6 +121,39 @@ Note that `GET /repos/...` reports `permissions.push` based on **your** access t
 token's granted scopes — so it is not a valid way to check whether a fine-grained PAT can write. If in
 doubt, attempt a real write and read the `x-accepted-github-permissions` response header.
 
+### Check the credentials first
+
+Before opening a tunnel and merging a pull request, verify the credentials on their own. **This calls no
+LLM, so it is free.**
+
+```bash
+pnpm check-auth --repo-name <org/repo to analyze> --clone
+```
+
+```
+認証方式: GitHub App（installation トークンに交換）
+
+✓ App: spec-bridge-acme（slug spec-bridge-acme / App ID 123456）
+  - acme（installation 789 / 対象 selected / Contents: write / Pull requests: write）
+
+✓ docs リポジトリ: acme/product-specs（private / 既定ブランチ main）
+✓ 解析対象: acme/backend（private / 既定ブランチ main）
+  ✓ トークンで浅いクローンができた
+
+結果: 使えます
+```
+
+It checks four things:
+
+- that the App ID and private key belong together (the JWT is accepted)
+- which accounts the App is installed on, and whether Contents / Pull requests are at **write**
+- that the docs repository and the analyzed repository are reachable **with the credential actually used**
+- with `--clone`, that the token can also perform a shallow git clone (discarded immediately)
+
+> ⚠️ When a credential lacks access to a private repository, GitHub returns **404** — indistinguishable
+> from "no such repository". If you see a 404, check the fine-grained PAT's selected repositories, or where
+> the App is installed.
+
 ## 4. Make localhost reachable
 
 GitHub cannot reach your machine directly, so open a tunnel.

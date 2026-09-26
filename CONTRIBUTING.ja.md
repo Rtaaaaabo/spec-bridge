@@ -15,6 +15,7 @@ cp .env.example .env
 | --- | --- |
 | `pnpm test` | テスト（LLM を呼ばないので高速・無料） |
 | `pnpm typecheck` | 型チェック（core / cli / web すべて） |
+| `pnpm check-auth` | GitHub の認証設定を確認（LLM を呼ばないので無料） |
 | `pnpm analyze --pr <PR> --repo <path> --docs <path>` | PR を1件解析 |
 | `pnpm web` | CX サポートデスク画面 |
 

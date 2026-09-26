@@ -119,6 +119,38 @@ App 運用にすると、PAT 運用と比べて次が変わります。
 > 黙って PAT にフォールバックさせていません
 > （「App を設定したつもりで、実は PAT で動いていた」が一番気づけない失敗のため）。
 
+### 認証だけ先に確かめる
+
+トンネルを張って PR をマージする前に、認証設定だけを確認できます。**LLM を呼ばないので無料です。**
+
+```bash
+pnpm check-auth --repo-name <解析対象の org/repo> --clone
+```
+
+```
+認証方式: GitHub App（installation トークンに交換）
+
+✓ App: spec-bridge-acme（slug spec-bridge-acme / App ID 123456）
+  - acme（installation 789 / 対象 selected / Contents: write / Pull requests: write）
+
+✓ docs リポジトリ: acme/product-specs（private / 既定ブランチ main）
+✓ 解析対象: acme/backend（private / 既定ブランチ main）
+  ✓ トークンで浅いクローンができた
+
+結果: 使えます
+```
+
+確認する内容は次の4つです。
+
+- App ID と秘密鍵の組み合わせが正しいか（JWT が通るか）
+- どのアカウントにインストールされていて、Contents / Pull requests が **write** か
+- docs リポジトリと解析対象リポジトリに、**実際に使う認証で**アクセスできるか
+- `--clone` を付けると、そのトークンで git の浅いクローンまでできるか（すぐ破棄します）
+
+> ⚠️ 非公開リポジトリに権限が無い場合、GitHub は **404**（存在しない）を返します。
+> 「リポジトリが無い」と見分けがつかないので、404 が出たら
+> fine-grained PAT の対象リポジトリ、または App のインストール先を確認してください。
+
 ## 4. ローカルで受け取れるようにする
 
 GitHub からローカルマシンへは直接届かないので、トンネルを張ります。
