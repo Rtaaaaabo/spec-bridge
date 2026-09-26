@@ -13,6 +13,10 @@ PR がマージされる
     ↓ webhook
 spec-bridge webhook サーバー
     ├─ 署名を検証（これが唯一の認証）
+    └─ ジョブを1件積んで 202 を返す（同じマージなら積まない）
+    ↓
+spec-bridge worker（別プロセス）
+    ├─ ジョブを1件ロックして取り出す
     ├─ リポジトリごとに認証を解決（App なら installation トークンへ交換）
     ├─ 解析対象リポジトリを一時ディレクトリへ浅くクローン
     ├─ 分類 →（仕様に影響するなら）解析
@@ -21,6 +25,9 @@ spec-bridge webhook サーバー
     ↓
 人間がレビューしてマージ  ← ここが承認フロー
 ```
+
+**受信と実行を分けてあります。** 解析は数分かかるので受信プロセスで走らせると、
+再起動で仕事が消え、同時に複数マージされると詰まります。
 
 **ソースコードは一時ディレクトリにしか置かず、処理後に必ず消します。**
 
@@ -180,15 +187,33 @@ https://xxxx-yyyy.trycloudflare.com/webhooks/github
 
 ## 5. 起動する
 
+ジョブの置き場所に Postgres を使います。`.env` に追記してください。
+
 ```bash
-pnpm webhook
+DATABASE_URL=postgres://user@localhost:5432/spec_bridge
 ```
 
+表は起動時に自動で作られます（`packages/jobs/src/schema.sql`）。
+
+受信と実行の2プロセスを別々に起動します。
+
+```bash
+pnpm webhook   # 受信して積むだけ
+pnpm worker    # 積まれた仕事を処理する
 ```
+
+ローカルで1つにまとめたい場合は `SPEC_BRIDGE_INLINE_WORKER=1` を付けて `pnpm webhook` だけでも動きます。
+
+> ⚠️ `DATABASE_URL` が無いとジョブはメモリに載ります。プロセスを落とすと消え、
+> 別プロセスの `pnpm worker` にも届きません（起動時に警告が出ます）。
+
+```
+ジョブの置き場所: Postgres
 spec-bridge webhook listening on http://localhost:3939
   POST /webhooks/github
   docs リポジトリ: your-org/your-product-specs
   GitHub 認証: GitHub App（installation トークン）
+  ジョブの実行は別プロセスです: pnpm worker
 ```
 
 必要な環境変数が足りない場合は起動時に落ちて、何が足りないかを表示します。
@@ -201,9 +226,17 @@ curl http://localhost:3939/health
 # {"ok":true,"docsRepo":"your-org/your-product-specs"}
 ```
 
-そのうえで、対象リポジトリで小さな PR をマージしてください。ログに以下が流れます。
+そのうえで、対象リポジトリで小さな PR をマージしてください。
+webhook 側には受領だけが出ます。
 
 ```
+[webhook] acme/backend#123 → ジョブを積みました: 3f7c...
+```
+
+実際の処理は worker 側のログに流れます。
+
+```
+▸ analyze.pr analyze.pr:acme/backend#123:9fbe...（1 回目）
 ▸ acme/backend#123 feat: ... （8 ファイル）
   docs リポジトリの認証を確認（app）
   docs リポジトリから 3 件のドキュメントを取得
@@ -211,6 +244,13 @@ curl http://localhost:3939/health
   → 影響あり: ...
 ▸ 「...」を解析中…
   ✓ PR 作成: https://github.com/your-org/your-product-specs/pull/1
+  ✓ 完了
+```
+
+積まれた仕事は SQL でも見られます。
+
+```sql
+select kind, state, attempts, left(last_error, 80), created_at from jobs order by created_at desc;
 ```
 
 仕様に影響しない PR（依存更新など）は分類の時点でスキップされ、PR は作られません。
@@ -224,6 +264,9 @@ curl http://localhost:3939/health
 | `GitHub App が <repo> にインストールされていません` | その App を対象リポジトリに入れていない。docs リポジトリにも必要（手順2の7） |
 | 起動時に `秘密鍵がありません` | `GITHUB_APP_ID` だけ設定されている。秘密鍵も渡すか、App の設定を消して PAT 運用にする |
 | `{"ignored":true}` | マージされた PR 以外は無視する仕様。正常 |
+| `{"duplicate":true}` | 同じマージのジョブが既にある。再送では PR が2つできない（正常） |
+| 202 は返るが何も起きない | `pnpm worker` が動いていない。`jobs` 表に `queued` のまま残っていないか確認 |
+| ジョブが `queued` のまま増える | worker が落ちている。リースが切れた仕事は次回起動時に取り直されます |
 | 生成された PR をマージすると、また PR ができる | `SPEC_BRIDGE_DOCS_REPO` が docs リポジトリと一致しておらず、ループのガードが効いていない |
 | 解析が始まらない | 分類でスキップされている。ログの「影響なし」の理由を確認 |
 
@@ -231,6 +274,7 @@ GitHub App の Advanced タブから、送信された webhook の内容と再�
 
 ## まだできないこと
 
-- **キューがない。** リクエストを受けたプロセスがそのまま解析します。
-  同時に大量の PR がマージされると詰まるため、本格運用では Trigger.dev などが必要です
-- **リトライがない。** 解析が失敗したら、GitHub App の画面から手動で Redeliver してください
+- **同時実行は1件。** worker は1プロセスで1件ずつ処理します。
+  台数を増やしたい場合は `pnpm worker` を複数起動してください（行ロックで取り合いません）
+- **テナントは1つ。** `SPEC_BRIDGE_DOCS_REPO` が唯一の「テナント設定」で、
+  ジョブの `tenant_id` は `local` 固定です

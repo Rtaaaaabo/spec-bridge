@@ -18,7 +18,9 @@
       "@spec-bridge/core": ["packages/core/src/index.ts"],
       "@spec-bridge/core/*": ["packages/core/src/*"],
       "@spec-bridge/github": ["packages/github/src/index.ts"],
-      "@spec-bridge/github/*": ["packages/github/src/*"]
+      "@spec-bridge/github/*": ["packages/github/src/*"],
+      "@spec-bridge/jobs": ["packages/jobs/src/index.ts"],
+      "@spec-bridge/jobs/*": ["packages/jobs/src/*"]
     }
   },
   "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts"]

@@ -13,7 +13,8 @@
     "web": "pnpm --filter @spec-bridge/web dev",
     "test": "tsx --test \"packages/**/*.test.ts\" \"apps/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm --filter @spec-bridge/web exec tsc --noEmit -p tsconfig.json",
-    "webhook": "pnpm --filter @spec-bridge/webhook dev"
+    "webhook": "pnpm --filter @spec-bridge/webhook dev",
+    "worker": "pnpm --filter @spec-bridge/webhook worker"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

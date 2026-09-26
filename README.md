@@ -292,7 +292,8 @@ pnpm webhook
 ```
 
 ```
-merged PR → webhook → verify signature → shallow clone → classify → analyze
+merged PR → webhook → verify signature → enqueue (the same merge is never enqueued twice)
+          → worker claims it → shallow clone → classify → analyze
           → open PR against the docs repo → delete the clone
 ```
 
