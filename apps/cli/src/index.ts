@@ -24,6 +24,7 @@ import {
   detectRepoName,
   fetchPullRequest,
   inspectApp,
+  listInstallationRepositories,
   parsePullRequestRef,
   parseRepoFullName,
   readAppCredentials,
@@ -248,6 +249,9 @@ async function runBackfillCommand(
   return result.failures.length > 0 ? 1 : 0;
 }
 
+/** `check-auth` でインストール対象を並べる上限。多いときは件数だけ足す */
+const MAX_LISTED_REPOS = 20;
+
 /**
  * リポジトリ1件ぶんのアクセスを確かめる。
  *
@@ -332,6 +336,20 @@ async function runCheckAuthCommand(options: CliOptions): Promise<number> {
             `Contents: ${installation.permissions["contents"] ?? "なし"} / ` +
             `Pull requests: ${installation.permissions["pull_requests"] ?? "なし"}）`,
         );
+        // 「App は入れたのに 404」の原因はほぼインストール対象の選び忘れなので、届く範囲を見せる
+        try {
+          const repositories = await listInstallationRepositories(credentials, installation.id);
+          const shown = repositories.slice(0, MAX_LISTED_REPOS);
+          for (const repository of shown) console.log(`      ${repository}`);
+          if (repositories.length > shown.length) {
+            console.log(`      … ほか ${repositories.length - shown.length} 件`);
+          }
+          if (repositories.length === 0) {
+            console.log("      （1件も選ばれていません）");
+          }
+        } catch {
+          console.log("      （リポジトリ一覧を取得できませんでした）");
+        }
       }
       // docs リポジトリへ PR を作るには両方 write が必要
       for (const installation of info.installations) {

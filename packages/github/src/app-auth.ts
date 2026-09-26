@@ -277,6 +277,26 @@ export async function inspectApp(credentials: AppCredentials): Promise<AppInfo> 
 }
 
 /**
+ * その installation が触れるリポジトリの一覧（`owner/repo`）。**切り分け専用。**
+ *
+ * 「App は入っているのに 404」の原因はたいていインストール対象の選び忘れで、
+ * 一覧を見るのが一番早い。
+ */
+export async function listInstallationRepositories(
+  credentials: AppCredentials,
+  installationId: number,
+): Promise<string[]> {
+  const app = new App({ appId: credentials.appId, privateKey: credentials.privateKey });
+  const octokit = await app.getInstallationOctokit(installationId);
+  const repositories = await octokit.paginate(
+    octokit.rest.apps.listReposAccessibleToInstallation,
+    { per_page: 100 },
+  );
+  // paginate は total_count を落として配列だけ返す
+  return repositories.map((repository) => repository.full_name);
+}
+
+/**
  * env から認証方式を決める。App の資格情報があればそれを使い、無ければ PAT。
  *
  * 移行のあいだ両方を同居させるための分岐。App 側が設定されていれば必ず App を使う
