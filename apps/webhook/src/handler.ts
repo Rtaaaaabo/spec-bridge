@@ -26,7 +26,12 @@ import { homedir, tmpdir } from "node:os";
 import { dirname } from "node:path";
 
 export interface HandlerConfig {
-  /** ドキュメントの提出先 `owner/repo` */
+  /**
+   * ドキュメントの提出先 `owner/repo`。
+   *
+   * **インストールごとに決まる**（`resolveDocsRepo`）。ここに来る時点で解決済みで、
+   * このハンドラは単一の提出先だけを見る。
+   */
   docsRepo: string;
   docsBaseBranch?: string;
   /**

@@ -5,6 +5,9 @@ import {
   readAppCredentials,
 } from "@spec-bridge/github";
 import { currentSession } from "@/lib/auth";
+import { fallbackDocsRepo } from "@/lib/config";
+import { tenantsByInstallation } from "@/lib/tenants";
+import { DocsRepoForm } from "./docs-repo-form";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +55,15 @@ export default async function InstallationsPage() {
 
   const { items, error } = await loadInstallations();
 
+  // 提出先の設定はテナント表にある。DB が無い環境でも画面は出す（未設定として扱う）
+  let tenants = new Map<number, { docsRepo: string | null }>();
+  try {
+    tenants = await tenantsByInstallation();
+  } catch {
+    tenants = new Map();
+  }
+  const fallback = fallbackDocsRepo() ?? null;
+
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">
       <header className="mb-8 flex items-baseline justify-between gap-4">
@@ -94,6 +106,13 @@ export default async function InstallationsPage() {
                 {installation.permissions["pull_requests"] ?? "なし"}
               </span>
             </div>
+            <DocsRepoForm
+              installationId={installation.id}
+              account={installation.account}
+              current={tenants.get(installation.id)?.docsRepo ?? null}
+              fallback={fallback}
+            />
+
             <ul className="mt-3 space-y-1">
               {installation.repositories.map((repo) => (
                 <li key={repo} className="text-sm">

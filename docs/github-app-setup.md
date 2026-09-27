@@ -64,7 +64,8 @@ These steps require a browser.
    | Pull requests | **Read and write** | Reading PR diffs, opening the docs PR |
    | Metadata | Read-only | Added automatically |
 
-4. Under "Subscribe to events", check **Pull request**
+4. Under "Subscribe to events", check **Pull request** and **Installation target** (plus `Installation`
+   if offered) — the latter records installations, which is what the docs-repository setting hangs off
 5. "Where can this GitHub App be installed?" — "Only on this account" is enough
 6. After creating it:
    - note the **App ID**
@@ -99,6 +100,7 @@ Add to `spec-bridge/.env`. API calls authenticate either with **GitHub App insta
 ```bash
 # webhook
 GITHUB_WEBHOOK_SECRET=<the secret from step 2>
+# Default destination. Each installation can set its own in the UI; this is the fallback
 SPEC_BRIDGE_DOCS_REPO=<your-org>/<your-product>-specs
 PORT=3939
 

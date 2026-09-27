@@ -80,3 +80,46 @@ export function parseMergedPullRequest(
     installationId: p.installation?.id ?? null,
   };
 }
+
+export interface InstallationEvent {
+  /** `created` / `deleted` / `new_permissions_accepted` など */
+  action: string;
+  installationId: number;
+  account: string;
+  /** インストールが消えたか（テナントを消してよいか） */
+  removed: boolean;
+}
+
+interface InstallationWebhookPayload {
+  action?: string;
+  installation?: {
+    id?: number;
+    account?: { login?: string; name?: string } | null;
+  };
+}
+
+/**
+ * `installation` / `installation_repositories` イベントを取り出す。
+ *
+ * これを受け取って初めて「誰が使っているか」が分かる。
+ * **提出先の設定は installation に紐づく**ので、まずこの記録が要る。
+ */
+export function parseInstallationEvent(
+  event: string | null | undefined,
+  payload: unknown,
+): InstallationEvent | null {
+  if (event !== "installation" && event !== "installation_repositories") return null;
+
+  const p = payload as InstallationWebhookPayload;
+  const installationId = p.installation?.id;
+  if (typeof installationId !== "number") return null;
+
+  const account = p.installation?.account;
+  return {
+    action: p.action ?? "",
+    installationId,
+    account: account?.login ?? account?.name ?? "?",
+    // suspend は「止まっているだけ」で設定は残したいので、消すのは deleted だけ
+    removed: p.action === "deleted",
+  };
+}

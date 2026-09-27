@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { test } from "node:test";
-import { isDocsRepoEvent, parseMergedPullRequest, verifyWebhookSignature } from "./webhook.ts";
+import {
+  isDocsRepoEvent,
+  parseInstallationEvent,
+  parseMergedPullRequest,
+  verifyWebhookSignature,
+} from "./webhook.ts";
 
 const SECRET = "s3cret";
 const sign = (body: string) =>
@@ -95,4 +100,40 @@ test("大文字小文字や前後の空白が違っても同一リポジトリ�
 test("解析対象リポジトリは通す", () => {
   assert.equal(isDocsRepoEvent("acme/backend", "acme/specs"), false);
   assert.equal(isDocsRepoEvent("acme/specs-web", "acme/specs"), false);
+});
+
+// --- インストールのイベント（テナントの記録） ---
+
+const installationPayload = {
+  action: "created",
+  installation: { id: 150693021, account: { login: "acme" } },
+};
+
+test("インストールされたことを取り出す", () => {
+  assert.deepEqual(parseInstallationEvent("installation", installationPayload), {
+    action: "created",
+    installationId: 150693021,
+    account: "acme",
+    removed: false,
+  });
+});
+
+test("リポジトリの増減も同じ形で受ける", () => {
+  const event = parseInstallationEvent("installation_repositories", {
+    ...installationPayload,
+    action: "added",
+  });
+  assert.equal(event?.installationId, 150693021);
+});
+
+// suspend は「止まっているだけ」。設定まで消すと、再開したときに入れ直しになる
+test("消すのはアンインストールのときだけ", () => {
+  assert.equal(parseInstallationEvent("installation", { ...installationPayload, action: "deleted" })?.removed, true);
+  assert.equal(parseInstallationEvent("installation", { ...installationPayload, action: "suspend" })?.removed, false);
+});
+
+test("関係ないイベントや欠けたペイロードは無視する", () => {
+  assert.equal(parseInstallationEvent("pull_request", installationPayload), null);
+  assert.equal(parseInstallationEvent("installation", {}), null);
+  assert.equal(parseInstallationEvent(null, installationPayload), null);
 });

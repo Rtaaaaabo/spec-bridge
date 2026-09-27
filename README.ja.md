@@ -335,6 +335,9 @@ PR マージ → webhook → 署名検証 → ジョブを積む（同じマー�
 ソースコードは一時ディレクトリにしか置かず、処理後に必ず消します。
 docs リポジトリへの PR が承認フローそのものです。人間がマージするまで生成物は `status: draft` のままです。
 
+生成物の提出先は**インストールごと**に設定できます（画面の `/installations`）。
+設定が無いインストールは `SPEC_BRIDGE_DOCS_REPO` に落ちるので、1組織で使うぶんには env だけでも動きます。
+
 GitHub App の作成・権限・ローカルへのトンネリングの手順は
 [docs/github-app-setup.ja.md](docs/github-app-setup.ja.md) にあります。
 API の認証は App の installation access token（推奨）と PAT のどちらかを選べます。

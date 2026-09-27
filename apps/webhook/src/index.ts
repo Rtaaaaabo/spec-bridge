@@ -2,12 +2,13 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import {
   checkGitHubAuthConfig,
+  parseInstallationEvent,
   parseMergedPullRequest,
   resolveGitHubAuth,
   verifyWebhookSignature,
 } from "@spec-bridge/github";
 import { analyzeJob } from "./analyze-job.ts";
-import { createJobStore, loadEnv, readConfig } from "./config.ts";
+import { createJobStore, createTenantStore, loadEnv, readConfig } from "./config.ts";
 import { createAnalyzeWorker } from "./worker.ts";
 
 loadEnv();
@@ -16,7 +17,7 @@ const config = readConfig();
 function preflight(): string[] {
   const problems: string[] = [];
   if (!config.secret) problems.push("GITHUB_WEBHOOK_SECRET が未設定です");
-  if (!config.docsRepo) problems.push("SPEC_BRIDGE_DOCS_REPO が未設定です（例: owner/my-specs）");
+  // 提出先はインストールごとに設定できるので、env は必須ではない
   problems.push(...checkGitHubAuthConfig());
   return problems;
 }
@@ -33,6 +34,7 @@ if (problems.length > 0) {
 // 「App を設定したつもりで PAT で動いていた」を運用側から見えるようにするため
 const auth = resolveGitHubAuth();
 const store = await createJobStore(config.databaseUrl);
+const tenants = await createTenantStore(config.databaseUrl);
 
 const app = new Hono();
 
@@ -47,7 +49,28 @@ app.post("/webhooks/github", async (c) => {
     return c.json({ error: "invalid signature" }, 401);
   }
 
-  const event = parseMergedPullRequest(c.req.header("x-github-event"), JSON.parse(raw));
+  const payload: unknown = JSON.parse(raw);
+  const eventName = c.req.header("x-github-event");
+
+  // 「誰が使っているか」はここで分かる。提出先の設定はこの記録に紐づく
+  const installation = parseInstallationEvent(eventName, payload);
+  if (installation) {
+    try {
+      if (installation.removed) await tenants.remove(installation.installationId);
+      else await tenants.upsert({
+        installationId: installation.installationId,
+        account: installation.account,
+      });
+      console.log(
+        `[webhook] installation ${installation.installationId}（${installation.account}）→ ${installation.action}`,
+      );
+    } catch (error) {
+      console.error("[webhook] インストールを記録できませんでした:", error);
+    }
+    return c.json({ ok: true }, 202);
+  }
+
+  const event = parseMergedPullRequest(eventName, payload);
   if (!event) {
     // マージされた PR 以外は正常応答で無視する（GitHub 側でリトライされないように）
     return c.json({ ignored: true }, 202);
@@ -69,7 +92,7 @@ app.post("/webhooks/github", async (c) => {
 });
 
 if (config.inlineWorker) {
-  const worker = createAnalyzeWorker({ store, auth, docsRepo: config.docsRepo });
+  const worker = createAnalyzeWorker({ store, tenants, auth, docsRepo: config.docsRepo });
   void worker.start();
   console.log("インラインのワーカーを起動しました（SPEC_BRIDGE_INLINE_WORKER=1）");
 }
@@ -77,7 +100,7 @@ if (config.inlineWorker) {
 serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`spec-bridge webhook listening on http://localhost:${info.port}`);
   console.log(`  POST /webhooks/github`);
-  console.log(`  docs リポジトリ: ${config.docsRepo}`);
+  console.log(`  提出先の既定: ${config.docsRepo || "（なし。インストールごとの設定を使う）"}`);
   console.log(
     `  GitHub 認証: ${auth.kind === "app" ? "GitHub App（installation トークン）" : "PAT（GITHUB_TOKEN）"}`,
   );

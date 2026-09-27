@@ -1,18 +1,20 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Worker, type JobStore } from "@spec-bridge/jobs";
+import { resolveDocsRepo, type TenantStore } from "@spec-bridge/tenants";
 import { checkGitHubAuthConfig, resolveGitHubAuth, type GitHubAuth } from "@spec-bridge/github";
 import { ANALYZE_PR, parseAnalyzePayload } from "./analyze-job.ts";
 import { BACKFILL_FEATURE, BACKFILL_FINISH, BACKFILL_SURVEY } from "@spec-bridge/backfill";
 import { featureHandler, finishHandler, surveyHandler } from "./backfill-handlers.ts";
-import { createJobStore, loadEnv, readConfig } from "./config.ts";
+import { createJobStore, createTenantStore, loadEnv, readConfig } from "./config.ts";
 import { handleMergedPullRequest } from "./handler.ts";
 
 export interface AnalyzeWorkerOptions {
   store: JobStore;
+  tenants: TenantStore;
   auth: GitHubAuth;
-  /** PR 解析の提出先。バックフィルは**ジョブごと**に提出先を持つ */
-  docsRepo: string;
+  /** テナントに設定が無いときの提出先（単一テナント運用の後方互換） */
+  docsRepo: string | undefined;
   log?: (line: string) => void;
 }
 
@@ -36,9 +38,19 @@ export function createAnalyzeWorker(options: AnalyzeWorkerOptions): Worker {
       [BACKFILL_FINISH]: finishHandler(deps),
       [ANALYZE_PR]: async (job) => {
         const event = parseAnalyzePayload(job.payload);
+
+        // 提出先はインストールごと。**解析を始める前に決める**
+        // （提出先の無いまま数分かけてから気づくのは高すぎる）
+        const { docsRepo, source } = await resolveDocsRepo(
+          options.tenants,
+          event.installationId,
+          options.docsRepo,
+        );
+        log(`  提出先: ${docsRepo}（${source === "installation" ? "インストールの設定" : "環境変数"}）`);
+
         const result = await handleMergedPullRequest(
           event,
-          { docsRepo: options.docsRepo, auth: options.auth },
+          { docsRepo, auth: options.auth },
           log,
         );
 
@@ -58,9 +70,8 @@ async function main(): Promise<void> {
   loadEnv();
   const config = readConfig();
 
-  const problems: string[] = [];
-  if (!config.docsRepo) problems.push("SPEC_BRIDGE_DOCS_REPO が未設定です");
-  problems.push(...checkGitHubAuthConfig());
+  // 提出先はインストールごとに設定できるので、env は必須ではない
+  const problems = [...checkGitHubAuthConfig()];
   if (problems.length > 0) {
     console.error("起動できません:");
     for (const p of problems) console.error(`  - ${p}`);
@@ -69,7 +80,8 @@ async function main(): Promise<void> {
 
   const auth = resolveGitHubAuth();
   const store = await createJobStore(config.databaseUrl);
-  const worker = createAnalyzeWorker({ store, auth, docsRepo: config.docsRepo });
+  const tenants = await createTenantStore(config.databaseUrl);
+  const worker = createAnalyzeWorker({ store, tenants, auth, docsRepo: config.docsRepo });
 
   // 受信側とは別プロセスなので、メモリ置き場では仕事が届かない
   if (!config.databaseUrl) {
@@ -78,7 +90,7 @@ async function main(): Promise<void> {
   }
 
   console.log("spec-bridge worker 起動");
-  console.log(`  docs リポジトリ: ${config.docsRepo}`);
+  console.log(`  提出先の既定: ${config.docsRepo || "（なし。インストールごとの設定を使う）"}`);
   console.log(
     `  GitHub 認証: ${auth.kind === "app" ? "GitHub App（installation トークン）" : "PAT（GITHUB_TOKEN）"}`,
   );

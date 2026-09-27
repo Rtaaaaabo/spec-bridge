@@ -65,7 +65,8 @@ gh repo create <your-org>/<your-product>-specs --private
    | Pull requests | **Read and write** | PR の差分取得、docs リポジトリへの PR 作成 |
    | Metadata | Read-only | 自動で付く |
 
-4. Subscribe to events で **Pull request** にチェック
+4. Subscribe to events で **Pull request** と **Installation target**（あれば `Installation`）にチェック。
+   後者はインストールを記録するのに使います（提出先の設定はインストールに紐づきます）
 5. 「Where can this GitHub App be installed?」は Only on this account で十分
 6. 作成後の画面で:
    - **App ID** を控える
@@ -101,6 +102,7 @@ gh repo create <your-org>/<your-product>-specs --private
 ```bash
 # webhook
 GITHUB_WEBHOOK_SECRET=<手順2で控えた secret>
+# 提出先の既定。インストールごとに画面から設定でき、設定が無いときだけこの値に落ちる
 SPEC_BRIDGE_DOCS_REPO=<your-org>/<your-product>-specs
 PORT=3939
 

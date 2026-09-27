@@ -45,6 +45,9 @@ importers:
       '@spec-bridge/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
+      '@spec-bridge/tenants':
+        specifier: workspace:*
+        version: link:../../packages/tenants
       next:
         specifier: ^16.2.12
         version: 16.2.12(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -85,6 +88,9 @@ importers:
       '@spec-bridge/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
+      '@spec-bridge/tenants':
+        specifier: workspace:*
+        version: link:../../packages/tenants
       hono:
         specifier: ^4.12.32
         version: 4.12.32
@@ -124,6 +130,16 @@ importers:
         version: 5.0.5
 
   packages/jobs:
+    dependencies:
+      pg:
+        specifier: ^8.13.1
+        version: 8.23.0
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.23.1
+
+  packages/tenants:
     dependencies:
       pg:
         specifier: ^8.13.1
