@@ -80,7 +80,7 @@ Agent SDK の `allowedTools` は「自動承認リスト」であって**使え�
 
 ### 6. 画面と API は `currentSession()` を通す
 
-`apps/web/middleware.ts` は Cookie の**有無**しか見ていません（Edge ランタイムから署名鍵を読めないため）。
+`apps/web/proxy.ts`（Next 16 以前の middleware）は Cookie の**有無**しか見ていません（Edge ランタイムから署名鍵を読めないため）。
 **認証はサーバー側の `currentSession()`（`apps/web/lib/auth.ts`）です。**
 
 新しい画面やルートハンドラを足すときは、先頭でこれを呼んでください。

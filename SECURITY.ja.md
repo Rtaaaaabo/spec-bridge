@@ -63,7 +63,7 @@ docs リポジトリを公開設定にすると、内部構造が外部から読
 - セッションは**署名付き Cookie**（HttpOnly / SameSite=Lax / 既定12時間）。
   中身は GitHub のユーザー識別子だけで、**アクセストークンは保存しません**
 - `SPEC_BRIDGE_SESSION_SECRET` が未設定なら、**誰も通しません**（素通しにしない）
-- **`middleware.ts` は認証ではありません。** Edge ランタイムからはルートの `.env` を読めず
+- **`proxy.ts`（Next 16 以前の middleware）は認証ではありません。** Edge ランタイムからはルートの `.env` を読めず
   署名鍵を持てないため、Cookie の有無だけを見てログイン画面へ振り分けています。
   本当の検証はサーバー側の `currentSession()`（`apps/web/lib/auth.ts`）です。
   **新しい画面や API を足すときは、必ずこれを通してください**

@@ -49,3 +49,9 @@ export function oauthConfig(): ReturnType<typeof readOAuthConfig> {
   ensureEnv();
   return readOAuthConfig(process.env);
 }
+
+/** 画面の公開 URL。コールバックの組み立てと、手順の表示に使う */
+export function baseUrl(): string {
+  ensureEnv();
+  return (process.env.SPEC_BRIDGE_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+}

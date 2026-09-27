@@ -62,7 +62,7 @@ LLM, so the UI and its APIs require sign-in.
 - The session is a **signed cookie** (HttpOnly, SameSite=Lax, 12 hours by default) carrying only the
   GitHub user identity — **the access token is never stored**
 - With `SPEC_BRIDGE_SESSION_SECRET` unset, **nobody** gets in (it does not fail open)
-- **`middleware.ts` is not the authentication.** The edge runtime cannot read the repository-root `.env`,
+- **`proxy.ts` (called middleware before Next 16) is not the authentication.** The edge runtime cannot read the repository-root `.env`,
   so it cannot hold the signing key; it only checks whether a cookie is present and redirects to the sign-in
   page. The real check is `currentSession()` (`apps/web/lib/auth.ts`) on the server.
   **Every new page and API route must go through it.**

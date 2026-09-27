@@ -100,7 +100,7 @@ differ per tenant, that means *acting as a different tenant*.
 
 ### 7. Pages and API routes must call `currentSession()`
 
-`apps/web/middleware.ts` only checks whether a session cookie is **present** — the edge runtime cannot read
+`apps/web/proxy.ts` (called middleware before Next 16) only checks whether a session cookie is **present** — the edge runtime cannot read
 the repository-root `.env`, so it cannot hold the signing key. **The authentication is
 `currentSession()` (`apps/web/lib/auth.ts`) on the server.**
 
