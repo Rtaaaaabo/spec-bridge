@@ -35,6 +35,13 @@ export interface HandlerConfig {
   docsRepo: string;
   docsBaseBranch?: string;
   /**
+   * この PR 1本で使ってよい額（USD）。超えたら残りの機能を書かずに提出する。
+   *
+   * 大規模 PR は実測で6機能・約 $15。webhook は自動で走るので、
+   * **上限が無いと1回のマージでいくらでも使える。**
+   */
+  budgetUsd?: number;
+  /**
    * GitHub の認証。App の installation トークンか PAT のどちらか（`resolveGitHubAuth()`）。
    *
    * **リポジトリごとに解決する。** 解析対象と docs リポジトリは別のインストールになりうるので、
@@ -136,6 +143,7 @@ export async function handleMergedPullRequest(
     const result = await runPipeline(pr, {
       repoPath: checkout.path,
       docsPath: docsDir,
+      budgetUsd: config.budgetUsd,
       log,
     });
     log(`  ${formatUsageSummary(result.usage)}`);
@@ -179,7 +187,12 @@ export async function handleMergedPullRequest(
         title: buildDocsPullRequestTitle({ kind: "pull-request", pr }, changes),
         // 割り当てなかった変更も本文に出す。取りこぼしはレビュアーにしか見つけられない
         body: buildDocsPullRequestBody(
-          { kind: "pull-request", pr, unclassified: result.classification.unclassified },
+          {
+            kind: "pull-request",
+            pr,
+            unclassified: result.classification.unclassified,
+            skippedTargets: result.skippedTargets,
+          },
           changes,
         ),
         branchSuffix: `${repo}-${event.number}`,

@@ -15,6 +15,8 @@ export interface AnalyzeWorkerOptions {
   auth: GitHubAuth;
   /** テナントに設定が無いときの提出先（単一テナント運用の後方互換） */
   docsRepo: string | undefined;
+  /** PR 1本あたりの上限（USD） */
+  prBudgetUsd: number;
   log?: (line: string) => void;
 }
 
@@ -50,7 +52,7 @@ export function createAnalyzeWorker(options: AnalyzeWorkerOptions): Worker {
 
         const result = await handleMergedPullRequest(
           event,
-          { docsRepo, auth: options.auth },
+          { docsRepo, auth: options.auth, budgetUsd: options.prBudgetUsd },
           log,
         );
 
@@ -81,7 +83,13 @@ async function main(): Promise<void> {
   const auth = resolveGitHubAuth();
   const store = await createJobStore(config.databaseUrl);
   const tenants = await createTenantStore(config.databaseUrl);
-  const worker = createAnalyzeWorker({ store, tenants, auth, docsRepo: config.docsRepo });
+  const worker = createAnalyzeWorker({
+    store,
+    tenants,
+    auth,
+    docsRepo: config.docsRepo,
+    prBudgetUsd: config.prBudgetUsd,
+  });
 
   // 受信側とは別プロセスなので、メモリ置き場では仕事が届かない
   if (!config.databaseUrl) {
@@ -91,6 +99,7 @@ async function main(): Promise<void> {
 
   console.log("spec-bridge worker 起動");
   console.log(`  提出先の既定: ${config.docsRepo || "（なし。インストールごとの設定を使う）"}`);
+  console.log(`  PR 1本あたりの上限: $${config.prBudgetUsd}`);
   console.log(
     `  GitHub 認証: ${auth.kind === "app" ? "GitHub App（installation トークン）" : "PAT（GITHUB_TOKEN）"}`,
   );

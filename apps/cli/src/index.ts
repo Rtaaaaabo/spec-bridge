@@ -70,6 +70,7 @@ analyze — マージされた PR ひとつを反映する
   --pr     <ref>    PR の URL または owner/repo#123
   --repo   <path>   解析対象リポジトリのローカルチェックアウト
   --docs   <path>   機能ドキュメントの出力先ディレクトリ
+  --budget <usd>    この PR で使ってよい額。超えたら残りの機能を書かない
   --force           仕様に影響しないと判定されても解析する
   --token   <token> GitHub トークン（省略時は GITHUB_TOKEN）
 
@@ -177,6 +178,7 @@ interface CliOptions {
   limit?: string;
   repoName?: string;
   docsRepo?: string;
+  budget?: string;
   force: boolean;
   allowBash: boolean;
   clone: boolean;
@@ -202,11 +204,18 @@ async function runAnalyzeCommand(
   const pr = await fetchPullRequest(ref, octokit);
   log(`  ${pr.title}（${pr.changedFiles.length} ファイル変更）`);
 
+  const budgetUsd = options.budget ? Number(options.budget) : undefined;
+  if (budgetUsd !== undefined && (!Number.isFinite(budgetUsd) || budgetUsd <= 0)) {
+    console.error(`エラー: --budget は正の数で指定してください: "${options.budget}"`);
+    return 1;
+  }
+
   const result = await runPipeline(pr, {
     repoPath,
     docsPath,
     force: options.force,
     allowBash: options.allowBash,
+    ...(budgetUsd !== undefined ? { budgetUsd } : {}),
     log,
   });
 
@@ -222,6 +231,9 @@ async function runAnalyzeCommand(
   console.log("── 結果 ──");
   for (const doc of result.updated) reportDoc(doc);
   for (const f of result.failures) console.log(`✗ ${f.id}: ${f.error}`);
+  for (const t of result.skippedTargets) {
+    console.log(`⏭ ${t.id}（${t.title}）: 予算に達したため書いていません`);
+  }
   reportUnclassified(result.classification.unclassified);
   reportUsage(result.usage);
 
@@ -525,6 +537,7 @@ async function main(): Promise<number> {
       limit: { type: "string" },
       "repo-name": { type: "string" },
       "docs-repo": { type: "string" },
+      budget: { type: "string" },
       clone: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
       "allow-bash": { type: "boolean", default: false },
@@ -550,6 +563,7 @@ async function main(): Promise<number> {
     limit: values.limit,
     repoName: values["repo-name"],
     docsRepo: values["docs-repo"],
+    budget: values.budget,
     force: values.force,
     allowBash: values["allow-bash"],
     clone: values.clone,

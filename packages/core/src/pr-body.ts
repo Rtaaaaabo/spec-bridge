@@ -47,7 +47,13 @@ export interface UnclassifiedChanges {
 }
 
 export type DocsPrSource =
-  | { kind: "pull-request"; pr: PullRequestInput; unclassified?: UnclassifiedChanges }
+  | {
+      kind: "pull-request";
+      pr: PullRequestInput;
+      unclassified?: UnclassifiedChanges;
+      /** 予算に達して書けなかった機能 */
+      skippedTargets?: Array<{ id: string; title: string }>;
+    }
   | {
       kind: "backfill";
       /** `org/repo` */
@@ -128,6 +134,7 @@ export function buildDocsPullRequestBody(
     }
   }
 
+  lines.push(...skippedLines(source));
   lines.push(...unclassifiedLines(source));
 
   lines.push(
@@ -152,6 +159,28 @@ export function buildDocsPullRequestTitle(source: DocsPrSource, changes: DocChan
 
   const subject = titles.length === 1 ? titles[0] : `${titles[0]} ほか ${titles.length - 1} 件`;
   return `docs: ${subject}（${suffix}）`;
+}
+
+/**
+ * 予算に達して書けなかった機能を並べる。
+ *
+ * **これが無いと、PR は「全部書けた」ように見える。** 予算で打ち切ったことと、
+ * 続きの拾い方をレビュアーに伝える。
+ */
+function skippedLines(source: DocsPrSource): string[] {
+  if (source.kind !== "pull-request") return [];
+  const skipped = source.skippedTargets ?? [];
+  if (skipped.length === 0) return [];
+
+  return [
+    `## 予算に達したため書けなかった機能（${skipped.length} 件）`,
+    "",
+    ...skipped.map((target) => `- ${target.title}（\`${target.id}\`）`),
+    "",
+    "**この PR だけでは、これらの機能のドキュメントは更新されていません。**",
+    "予算を上げて同じ PR を解析し直すと、続きから拾えます。",
+    "",
+  ];
 }
 
 /**
