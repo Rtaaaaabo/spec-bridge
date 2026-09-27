@@ -108,6 +108,9 @@ PORT=3939
 # Features past the cap are skipped and named in the docs pull request
 SPEC_BRIDGE_PR_BUDGET_USD=10
 
+# How many features to analyze at once (default 1). Same cost, less wall time
+SPEC_BRIDGE_ANALYZE_CONCURRENCY=1
+
 # auth (recommended): exchange the App ID + private key for installation access tokens
 GITHUB_APP_ID=<the App ID from step 2>
 GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/your-app.private-key.pem

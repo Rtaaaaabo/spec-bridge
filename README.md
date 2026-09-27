@@ -191,6 +191,7 @@ The estimate is priced at API rates; if you authenticate with a Claude subscript
 | --- | --- |
 | `--budget <usd>` | Spending cap for this pull request; remaining features are skipped past it (unlimited by default) |
 | `--estimate` | Classify only, print the cost and time estimate, and stop (about $0.3) |
+| `--concurrency <n>` | Analyze this many features at once (default 1). **Same cost, less wall time** |
 | `--force` | Analyze even when classified as spec-irrelevant |
 | `--allow-bash` | Allow the agent to use Bash (e.g. to follow `git log`) |
 | `--quiet` | Suppress progress output |
@@ -356,6 +357,12 @@ The same estimate is logged right after classification during a normal run. It i
 **a measured average times the feature count** — the basis is printed alongside so it doesn't pretend to
 be a prediction. Override the coefficient with `SPEC_BRIDGE_COST_PER_FEATURE_USD` once you have numbers
 for your own repository.
+
+**Wall time shrinks with concurrency.** Features are independent, so running them together costs the same
+and finishes sooner (a six-feature, 29-minute pull request takes roughly half that at two at a time). The
+default is serial; raise it with `--concurrency` (or `SPEC_BRIDGE_ANALYZE_CONCURRENCY` for the webhook).
+**It also makes LLM usage limits more likely**, so raise it gradually. With concurrency, the budget check
+is looser by the number of in-flight features, since it is checked before each one starts.
 
 **Spending cap.** A large pull request measured at six features and roughly $15 (gitea #38966, 71 files).
 Over the webhook, `SPEC_BRIDGE_PR_BUDGET_USD` (default $10) cuts the run short; the CLI takes `--budget`.

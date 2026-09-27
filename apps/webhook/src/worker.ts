@@ -17,6 +17,8 @@ export interface AnalyzeWorkerOptions {
   docsRepo: string | undefined;
   /** PR 1本あたりの上限（USD） */
   prBudgetUsd: number;
+  /** 機能の解析を同時に走らせる数 */
+  analyzeConcurrency?: number;
   log?: (line: string) => void;
 }
 
@@ -52,7 +54,14 @@ export function createAnalyzeWorker(options: AnalyzeWorkerOptions): Worker {
 
         const result = await handleMergedPullRequest(
           event,
-          { docsRepo, auth: options.auth, budgetUsd: options.prBudgetUsd },
+          {
+            docsRepo,
+            auth: options.auth,
+            budgetUsd: options.prBudgetUsd,
+            ...(options.analyzeConcurrency !== undefined
+              ? { concurrency: options.analyzeConcurrency }
+              : {}),
+          },
           log,
         );
 
@@ -89,6 +98,7 @@ async function main(): Promise<void> {
     auth,
     docsRepo: config.docsRepo,
     prBudgetUsd: config.prBudgetUsd,
+    analyzeConcurrency: config.analyzeConcurrency,
   });
 
   // 受信側とは別プロセスなので、メモリ置き場では仕事が届かない
@@ -100,6 +110,7 @@ async function main(): Promise<void> {
   console.log("spec-bridge worker 起動");
   console.log(`  提出先の既定: ${config.docsRepo || "（なし。インストールごとの設定を使う）"}`);
   console.log(`  PR 1本あたりの上限: $${config.prBudgetUsd}`);
+  console.log(`  機能の同時解析: ${config.analyzeConcurrency} 件`);
   console.log(
     `  GitHub 認証: ${auth.kind === "app" ? "GitHub App（installation トークン）" : "PAT（GITHUB_TOKEN）"}`,
   );
