@@ -31,7 +31,7 @@ import {
   runProgress,
   withinBudget,
   type FeatureJobResult,
-} from "./backfill-job.ts";
+} from "@spec-bridge/backfill";
 import { fetchDocsFromRepo } from "./docs-mirror.ts";
 
 export interface BackfillHandlerDeps {

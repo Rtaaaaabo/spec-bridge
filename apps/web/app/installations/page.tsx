@@ -61,11 +61,16 @@ export default async function InstallationsPage() {
             spec-bridge が読めるリポジトリです。ここに無いリポジトリは解析できません。
           </p>
         </div>
-        <form action="/api/github/logout" method="post">
+        <div className="flex items-center gap-3">
+          <a href="/runs" className="text-xs underline" style={{ color: "var(--muted)" }}>
+            ラン
+          </a>
+          <form action="/api/github/logout" method="post">
           <button type="submit" className="text-xs underline" style={{ color: "var(--muted)" }}>
-            {session.login} · ログアウト
-          </button>
-        </form>
+              {session.login} · ログアウト
+            </button>
+          </form>
+        </div>
       </header>
 
       {error && (

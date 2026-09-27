@@ -55,3 +55,23 @@ export function baseUrl(): string {
   ensureEnv();
   return (process.env.SPEC_BRIDGE_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
+
+/** ジョブ表の接続先。未設定ならラン一覧は出せない */
+export function databaseUrl(): string {
+  ensureEnv();
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) {
+    throw new Error("DATABASE_URL が設定されていません（ジョブの置き場所）。");
+  }
+  return url;
+}
+
+/** 生成物の提出先 `org/repo`。いまは環境ごとに1つ（テナント表が入るまで） */
+export function docsRepo(): string {
+  ensureEnv();
+  const repo = process.env.SPEC_BRIDGE_DOCS_REPO?.trim();
+  if (!repo) {
+    throw new Error("SPEC_BRIDGE_DOCS_REPO が設定されていません（生成物の提出先）。");
+  }
+  return repo;
+}

@@ -14,7 +14,7 @@ import {
   surveyJob,
   withinBudget,
   type BackfillRun,
-} from "./backfill-job.ts";
+} from "./index.ts";
 
 const run: BackfillRun = {
   runId: "run-1",
