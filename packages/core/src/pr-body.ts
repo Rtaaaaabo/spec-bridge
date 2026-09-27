@@ -15,6 +15,18 @@ export function coverageLabel(kind: CoverageKind): string {
   return "変更ファイル読了";
 }
 
+/**
+ * 読了率を「0.26（7/27 ファイル）」の形にする。
+ *
+ * 比率だけだと「割り当てが広すぎた」のか「読み足りない」のかが分からない。
+ * 分母が見えれば、分類のやりすぎもレビュアーが気づける。
+ */
+export function formatCoverage(breakdown: ConfidenceBreakdown): string {
+  const ratio = breakdown.readCoverage.toFixed(2);
+  if (breakdown.coverageTotal === 0) return ratio;
+  return `${ratio}（${breakdown.coverageRead}/${breakdown.coverageTotal} ファイル）`;
+}
+
 export interface DocChange {
   doc: FeatureDoc;
   breakdown: ConfidenceBreakdown;
@@ -84,7 +96,7 @@ export function buildDocsPullRequestBody(
     lines.push(
       `**確度 ${doc.meta.confidence.toFixed(2)}** — ` +
         `出典の実在 ${breakdown.sourceValidity.toFixed(2)} / ` +
-        `${coverageLabel(breakdown.coverageKind)} ${breakdown.readCoverage.toFixed(2)} / ` +
+        `${coverageLabel(breakdown.coverageKind)} ${formatCoverage(breakdown)} / ` +
         `出典の密度 ${breakdown.citationDensity.toFixed(2)} / ` +
         `確定度 ${breakdown.determinacy.toFixed(2)}`,
     );

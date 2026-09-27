@@ -201,6 +201,9 @@ function buildPrompt(
   ].join("\n");
 }
 
+/** これを下回ったら「読めていない」と警告する */
+const LOW_COVERAGE = 0.5;
+
 /** 差分に使ってよい文字数。これを超えるぶんは件数を明記して落とす */
 const DIFF_BUDGET = 180_000;
 
@@ -377,6 +380,20 @@ function finalize(
     filesRead,
     selfReported: output.confidence,
   });
+
+  // 割り当てられたファイルの多くを読んでいないなら、レビュアーに知らせる。
+  // 「分類が広すぎた」か「読み足りない」のどちらかで、どちらも人が見れば分かる
+  if (
+    confidence.coverageKind === "feature-files" &&
+    confidence.coverageTotal > 0 &&
+    confidence.readCoverage < LOW_COVERAGE
+  ) {
+    warnings.push(
+      `この機能に割り当てられた変更ファイル ${confidence.coverageTotal} 件のうち ` +
+        `${confidence.coverageRead} 件しか開いていません。` +
+        `割り当てが広すぎるか、読み込みが足りていない可能性があります。`,
+    );
+  }
 
   return {
     output: { ...output, body: checked.body, confidence: confidence.score },

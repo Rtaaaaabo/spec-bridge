@@ -398,3 +398,18 @@ test("割り当てが無ければ従来どおり全変更ファイルで測る",
   assert.equal(result.coverageKind, "changed-files");
   assert.equal(result.readCoverage, 0.5);
 });
+
+test("読了の内訳（分子と分母）を返す", () => {
+  const repoPath = fixtureRepo();
+  const result = computeConfidence({
+    body: body(),
+    repoPath,
+    currentRepo: "a/b",
+    changedFiles: ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"],
+    filesRead: [join(repoPath, "src/a.ts")],
+    selfReported: 0.8,
+  });
+  assert.equal(result.coverageRead, 1);
+  assert.equal(result.coverageTotal, 4);
+  assert.equal(result.readCoverage, 0.25);
+});

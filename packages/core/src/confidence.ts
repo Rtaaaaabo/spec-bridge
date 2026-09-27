@@ -26,6 +26,9 @@ export interface ConfidenceBreakdown {
   readCoverage: number;
   /** `readCoverage` が何を測ったか。PR 解析とバックフィルで指標が違う */
   coverageKind: CoverageKind;
+  /** 読了の内訳: 読んだ数 / 対象の数 */
+  coverageRead: number;
+  coverageTotal: number;
   /** 仕様1項目あたりの出典数（2件で満点に正規化） */
   citationDensity: number;
   /** 推測が必要だった度合いの裏返し */
@@ -168,16 +171,23 @@ function normalizeRead(filesRead: string[], repoPath: string): Set<string> {
 }
 
 /** エージェントが読んだファイルのうち、PR の変更ファイルと一致した割合 */
+/** 読了率と、その内訳（分子と分母）。**比率だけだと解釈できない** */
+export interface CoverageCount {
+  ratio: number;
+  read: number;
+  total: number;
+}
+
 function computeReadCoverage(
   filesRead: string[],
   changedFiles: string[],
   repoPath: string,
-): number {
-  if (changedFiles.length === 0) return 1;
+): CoverageCount {
+  if (changedFiles.length === 0) return { ratio: 1, read: 0, total: 0 };
 
   const normalized = normalizeRead(filesRead, repoPath);
-  const hit = changedFiles.filter((f) => normalized.has(f)).length;
-  return clamp01(hit / changedFiles.length);
+  const read = changedFiles.filter((f) => normalized.has(f)).length;
+  return { ratio: clamp01(read / changedFiles.length), read, total: changedFiles.length };
 }
 
 /**
@@ -196,18 +206,18 @@ function computeCitedFileCoverage(
   currentRepo: string,
   filesRead: string[],
   repoPath: string,
-): number {
+): CoverageCount {
   const cited = new Set(
     collectSources(body)
       .filter((s) => isSameRepo(s, currentRepo))
       .map((s) => s.file),
   );
   // 出典が1件も無いなら「調べた証拠が無い」。満点ではなく 0 に落とす。
-  if (cited.size === 0) return 0;
+  if (cited.size === 0) return { ratio: 0, read: 0, total: 0 };
 
   const normalized = normalizeRead(filesRead, repoPath);
-  const hit = [...cited].filter((f) => normalized.has(f)).length;
-  return clamp01(hit / cited.size);
+  const read = [...cited].filter((f) => normalized.has(f)).length;
+  return { ratio: clamp01(read / cited.size), read, total: cited.size };
 }
 
 export interface ConfidenceInput {
@@ -253,7 +263,7 @@ export function computeConfidence(input: ConfidenceInput): ConfidenceBreakdown {
   // 同じ指標を使い回すと満点が無条件で入るので、測る対象そのものを切り替える。
   const coverageKind: CoverageKind =
     changedFiles === null ? "cited-files" : featureFiles ? "feature-files" : "changed-files";
-  const readCoverage =
+  const coverage =
     changedFiles === null
       ? computeCitedFileCoverage(body, currentRepo, filesRead, repoPath)
       : computeReadCoverage(filesRead, featureFiles ?? changedFiles, repoPath);
@@ -270,14 +280,17 @@ export function computeConfidence(input: ConfidenceInput): ConfidenceBreakdown {
       : clamp01(1 - body.openQuestions.length / (body.rules.length + body.openQuestions.length));
 
   const score = clamp01(
-    0.4 * sourceValidity + 0.25 * readCoverage + 0.2 * citationDensity + 0.15 * determinacy,
+    0.4 * sourceValidity + 0.25 * coverage.ratio + 0.2 * citationDensity + 0.15 * determinacy,
   );
 
   return {
     score: Math.round(score * 100) / 100,
     sourceValidity: Math.round(sourceValidity * 100) / 100,
-    readCoverage: Math.round(readCoverage * 100) / 100,
+    readCoverage: Math.round(coverage.ratio * 100) / 100,
     coverageKind,
+    // 比率だけでは「割り当てが広すぎた」のか「読み足りない」のか分からない
+    coverageRead: coverage.read,
+    coverageTotal: coverage.total,
     citationDensity: Math.round(citationDensity * 100) / 100,
     determinacy: Math.round(determinacy * 100) / 100,
     selfReported,
