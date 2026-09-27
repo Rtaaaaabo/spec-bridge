@@ -1,5 +1,11 @@
 import { analyzeFeature } from "./analyze.ts";
 import { classifyPullRequest, type ClassifyResult } from "./classify.ts";
+import {
+  estimateOptionsFromEnv,
+  estimateRun,
+  formatEstimate,
+  type RunEstimate,
+} from "./estimate.ts";
 import type { ConfidenceBreakdown } from "./confidence.ts";
 import { mergeAnalysis, type MergeWarning } from "./merge.ts";
 import { DocStore } from "./store.ts";
@@ -39,6 +45,8 @@ export interface SkippedTarget {
 export interface RunResult {
   skipped: boolean;
   classification: ClassifyResult;
+  /** 解析を始める前に出した見積もり。実測と並べて精度を確かめられる */
+  estimate: RunEstimate | null;
   /** 予算に達したため書かなかった機能 */
   skippedTargets: SkippedTarget[];
   updated: Array<{
@@ -82,6 +90,7 @@ export async function runPipeline(
     return {
       skipped: true,
       classification,
+      estimate: null,
       skippedTargets: [],
       updated: [],
       failures: [],
@@ -93,12 +102,23 @@ export async function runPipeline(
     return {
       skipped: true,
       classification,
+      estimate: null,
       skippedTargets: [],
       updated: [],
       failures: [],
       usage: tally.summary(),
     };
   }
+
+  // 分類は安い（実測 $0.27）。**ここで機能数が分かるので、走らせる前に費用を知らせる。**
+  // 「安くする」より「高い PR を事前に知らせる」ほうが、判断を人に残せる
+  const estimate = estimateRun(classification.targets.length, {
+    ...estimateOptionsFromEnv(),
+    ...(options.budgetUsd !== undefined ? { budgetUsd: options.budgetUsd } : {}),
+    spentUsd: tally.summary().costUsd,
+  });
+  log(`▸ 見積もり: ${formatEstimate(estimate)}`);
+  log(`  （${estimate.basis}）`);
 
   const updated: RunResult["updated"] = [];
   const failures: RunResult["failures"] = [];
@@ -189,6 +209,7 @@ export async function runPipeline(
   return {
     skipped: false,
     classification,
+    estimate,
     skippedTargets,
     updated,
     failures,

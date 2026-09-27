@@ -190,6 +190,7 @@ The estimate is priced at API rates; if you authenticate with a Claude subscript
 | Option | Description |
 | --- | --- |
 | `--budget <usd>` | Spending cap for this pull request; remaining features are skipped past it (unlimited by default) |
+| `--estimate` | Classify only, print the cost and time estimate, and stop (about $0.3) |
 | `--force` | Analyze even when classified as spec-irrelevant |
 | `--allow-bash` | Allow the agent to use Bash (e.g. to follow `git log`) |
 | `--quiet` | Suppress progress output |
@@ -342,6 +343,19 @@ merged PR → webhook → verify signature → enqueue (the same merge is never 
 Source code only ever lands in a temporary directory and is deleted after the run. The pull request
 against the docs repository *is* the review gate: generated content is `status: draft` until a human
 merges it.
+
+**An expensive pull request announces itself before the money is spent.** Classification is cheap
+(measured at $0.27 and 42 seconds) and already tells you how many features will be written.
+
+```bash
+pnpm analyze --pr <PR> --repo <path> --docs <path> --estimate
+# → 6 features / estimated $15.00, about 27 min (2 will be skipped once the budget is reached)
+```
+
+The same estimate is logged right after classification during a normal run. It is
+**a measured average times the feature count** — the basis is printed alongside so it doesn't pretend to
+be a prediction. Override the coefficient with `SPEC_BRIDGE_COST_PER_FEATURE_USD` once you have numbers
+for your own repository.
 
 **Spending cap.** A large pull request measured at six features and roughly $15 (gitea #38966, 71 files).
 Over the webhook, `SPEC_BRIDGE_PR_BUDGET_USD` (default $10) cuts the run short; the CLI takes `--budget`.

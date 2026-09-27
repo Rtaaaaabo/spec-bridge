@@ -106,6 +106,10 @@ GITHUB_WEBHOOK_SECRET=<手順2で控えた secret>
 SPEC_BRIDGE_DOCS_REPO=<your-org>/<your-product>-specs
 PORT=3939
 
+# PR 1本あたりの上限（USD、既定 10）。大規模 PR は実測で6機能・約 $15 かかる。
+# 上限に達した機能は書かず、docs リポジトリの PR 本文にその旨を明記する
+SPEC_BRIDGE_PR_BUDGET_USD=10
+
 # 認証（推奨）: App ID + 秘密鍵を installation access token に交換する
 GITHUB_APP_ID=<手順2で控えた App ID>
 GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/your-app.private-key.pem

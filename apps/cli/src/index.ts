@@ -9,9 +9,13 @@ import { join, relative } from "node:path";
 import {
   buildDocsPullRequestBody,
   buildDocsPullRequestTitle,
+  classifyPullRequest,
   coverageLabel,
   DocStore,
+  estimateOptionsFromEnv,
+  estimateRun,
   formatCoverage,
+  formatEstimate,
   formatQuestion,
   formatUsageSummary,
   INDEX_PAGE,
@@ -21,6 +25,7 @@ import {
   questionsOfKind,
   runBackfill,
   runPipeline,
+  UsageTally,
   type BackfillResult,
   type DocChange,
   type RunResult,
@@ -71,6 +76,7 @@ analyze — マージされた PR ひとつを反映する
   --repo   <path>   解析対象リポジトリのローカルチェックアウト
   --docs   <path>   機能ドキュメントの出力先ディレクトリ
   --budget <usd>    この PR で使ってよい額。超えたら残りの機能を書かない
+  --estimate        分類だけ行い、費用と時間の見積もりを出して終わる（約 $0.3）
   --force           仕様に影響しないと判定されても解析する
   --token   <token> GitHub トークン（省略時は GITHUB_TOKEN）
 
@@ -119,6 +125,56 @@ async function assertDirectory(path: string, label: string): Promise<string> {
     throw new Error(`${label} がディレクトリとして見つかりません: ${abs}`);
   }
   return abs;
+}
+
+/**
+ * 分類だけ流して見積もりを出す（`--estimate`）。
+ *
+ * 分類は実測 $0.27・42秒。**解析の前にこれを知れば、高くつく PR を人が判断できる。**
+ */
+async function reportEstimateOnly(
+  pr: Awaited<ReturnType<typeof fetchPullRequest>>,
+  docsPath: string,
+  budgetUsd: number | undefined,
+  log: (line: string) => void,
+): Promise<number> {
+  const index = await new DocStore(docsPath).index();
+  log(`▸ この PR が仕様に影響するか分類中…`);
+
+  const tally = new UsageTally();
+  const classification = await classifyPullRequest(pr, index, {
+    onProgress: log,
+    onUsage: tally.add,
+  });
+
+  console.log("");
+  console.log("── 見積もり ──");
+  console.log(`${classification.affectsSpec ? "影響あり" : "影響なし"}: ${classification.reason}`);
+
+  if (!classification.affectsSpec || classification.targets.length === 0) {
+    console.log("解析は行われません（費用は分類ぶんのみ）。");
+    reportUsage(tally.summary());
+    return 0;
+  }
+
+  for (const target of classification.targets) {
+    const id = target.docId ?? target.newDocId ?? "(id なし)";
+    console.log(`- ${target.title}（${id}）: 変更ファイル ${target.files.length} 件`);
+  }
+
+  const estimate = estimateRun(classification.targets.length, {
+    ...estimateOptionsFromEnv(),
+    ...(budgetUsd !== undefined ? { budgetUsd } : {}),
+    spentUsd: tally.summary().costUsd,
+  });
+  console.log("");
+  console.log(formatEstimate(estimate));
+  console.log(`（${estimate.basis}）`);
+  reportUnclassified(classification.unclassified);
+  console.log("");
+  console.log("実際に解析するには --estimate を外して実行してください。");
+  reportUsage(tally.summary());
+  return 0;
 }
 
 /** 生成されたドキュメント1件分の結果を表示する */
@@ -179,6 +235,7 @@ interface CliOptions {
   repoName?: string;
   docsRepo?: string;
   budget?: string;
+  estimateOnly: boolean;
   force: boolean;
   allowBash: boolean;
   clone: boolean;
@@ -208,6 +265,11 @@ async function runAnalyzeCommand(
   if (budgetUsd !== undefined && (!Number.isFinite(budgetUsd) || budgetUsd <= 0)) {
     console.error(`エラー: --budget は正の数で指定してください: "${options.budget}"`);
     return 1;
+  }
+
+  // 分類だけ流して、いくらかかるかを先に知る。高くつく PR は走らせる前に分かる
+  if (options.estimateOnly) {
+    return reportEstimateOnly(pr, docsPath, budgetUsd, log);
   }
 
   const result = await runPipeline(pr, {
@@ -538,6 +600,7 @@ async function main(): Promise<number> {
       "repo-name": { type: "string" },
       "docs-repo": { type: "string" },
       budget: { type: "string" },
+      estimate: { type: "boolean", default: false },
       clone: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
       "allow-bash": { type: "boolean", default: false },
@@ -564,6 +627,7 @@ async function main(): Promise<number> {
     repoName: values["repo-name"],
     docsRepo: values["docs-repo"],
     budget: values.budget,
+    estimateOnly: values.estimate,
     force: values.force,
     allowBash: values["allow-bash"],
     clone: values.clone,
