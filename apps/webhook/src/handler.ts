@@ -192,6 +192,7 @@ export async function handleMergedPullRequest(
             pr,
             unclassified: result.classification.unclassified,
             skippedTargets: result.skippedTargets,
+            usage: result.usage,
           },
           changes,
         ),

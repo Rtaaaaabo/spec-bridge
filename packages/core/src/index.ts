@@ -8,6 +8,7 @@ export * from "./analyze.ts";
 export * from "./merge.ts";
 export * from "./pr-body.ts";
 export * from "./changed-files.ts";
+export * from "./estimate.ts";
 export * from "./pipeline.ts";
 export * from "./select-docs.ts";
 export * from "./ask.ts";

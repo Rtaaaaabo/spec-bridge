@@ -53,6 +53,8 @@ export type DocsPrSource =
       unclassified?: UnclassifiedChanges;
       /** 予算に達して書けなかった機能 */
       skippedTargets?: Array<{ id: string; title: string }>;
+      /** 実際にかかった費用と時間。見積もりの精度を確かめる材料になる */
+      usage?: UsageSummary;
     }
   | {
       kind: "backfill";
@@ -225,6 +227,7 @@ function introLines(source: DocsPrSource): string[] {
       "",
       `> ${pr.title}`,
       "",
+      ...(source.usage ? [formatUsageSummary(source.usage), ""] : []),
     ];
   }
 

@@ -104,6 +104,10 @@ GITHUB_WEBHOOK_SECRET=<the secret from step 2>
 SPEC_BRIDGE_DOCS_REPO=<your-org>/<your-product>-specs
 PORT=3939
 
+# Spending cap per pull request (USD, default 10). A large PR measured at six features, ~$15.
+# Features past the cap are skipped and named in the docs pull request
+SPEC_BRIDGE_PR_BUDGET_USD=10
+
 # auth (recommended): exchange the App ID + private key for installation access tokens
 GITHUB_APP_ID=<the App ID from step 2>
 GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/your-app.private-key.pem
