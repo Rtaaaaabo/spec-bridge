@@ -15,6 +15,7 @@
     "@spec-bridge/core": "workspace:*",
     "@spec-bridge/github": "workspace:*",
     "@spec-bridge/jobs": "workspace:*",
+    "@spec-bridge/tenants": "workspace:*",
     "hono": "^4.12.32"
   },
   "devDependencies": {

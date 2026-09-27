@@ -342,6 +342,10 @@ Source code only ever lands in a temporary directory and is deleted after the ru
 against the docs repository *is* the review gate: generated content is `status: draft` until a human
 merges it.
 
+Where documents are submitted is configured **per installation** (in the UI at `/installations`).
+Installations without a setting fall back to `SPEC_BRIDGE_DOCS_REPO`, so a single organisation can run on
+the environment variable alone.
+
 Setup (creating the GitHub App, permissions, tunneling to localhost) is documented in
 [docs/github-app-setup.md](docs/github-app-setup.md). API calls authenticate with App installation access
 tokens (recommended) or with a PAT.

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MemoryJobStore, PostgresJobStore, type JobStore } from "@spec-bridge/jobs";
+import { MemoryTenantStore, PostgresTenantStore, type TenantStore } from "@spec-bridge/tenants";
 
 /** モノレポルートの .env を読む（CLI / web / worker と設定ファイルを1つに保つ） */
 export function loadEnv(): void {
@@ -32,6 +33,25 @@ export async function createJobStore(
   const store = new PostgresJobStore(databaseUrl);
   await store.migrate();
   log("ジョブの置き場所: Postgres");
+  return store;
+}
+
+/**
+ * テナント（インストール）の置き場所。
+ *
+ * ジョブと同じ DB を使う。**提出先の設定はここにしかない**ので、
+ * DB が無い場合はメモリに置く（プロセスを落とすと消えるため、env の提出先が実質の設定になる）。
+ */
+export async function createTenantStore(
+  databaseUrl: string | undefined,
+  log: (line: string) => void = console.log,
+): Promise<TenantStore> {
+  if (!databaseUrl) {
+    log("⚠ DATABASE_URL が未設定です。インストールの設定を保存しません（SPEC_BRIDGE_DOCS_REPO を使います）");
+    return new MemoryTenantStore();
+  }
+  const store = new PostgresTenantStore(databaseUrl);
+  await store.migrate();
   return store;
 }
 

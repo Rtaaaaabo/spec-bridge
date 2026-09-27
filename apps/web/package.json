@@ -11,6 +11,7 @@
     "@spec-bridge/backfill": "workspace:*",
     "@spec-bridge/core": "workspace:*",
     "@spec-bridge/jobs": "workspace:*",
+    "@spec-bridge/tenants": "workspace:*",
     "@spec-bridge/github": "workspace:*",
     "next": "^16.2.12",
     "react": "^19.2.8",

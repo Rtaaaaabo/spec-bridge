@@ -297,6 +297,27 @@ export async function listInstallationRepositories(
 }
 
 /**
+ * そのリポジトリを見ているインストールの id。入っていなければ null。
+ *
+ * **App の JWT でしか引けない**（installation トークンでは 403 になる）ので、
+ * 画面やジョブから使えるよう独立した関数にしてある。
+ */
+export async function installationIdForRepo(
+  credentials: AppCredentials,
+  fullName: string,
+): Promise<number | null> {
+  const app = new App({ appId: credentials.appId, privateKey: credentials.privateKey });
+  const { owner, repo } = parseRepoFullName(fullName);
+  try {
+    const { data } = await app.octokit.rest.apps.getRepoInstallation({ owner, repo });
+    return data.id;
+  } catch (error) {
+    if ((error as { status?: number }).status === 404) return null;
+    throw error;
+  }
+}
+
+/**
  * env から認証方式を決める。App の資格情報があればそれを使い、無ければ PAT。
  *
  * 移行のあいだ両方を同居させるための分岐。App 側が設定されていれば必ず App を使う

@@ -1,9 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { DEFAULT_BUDGET_USD, surveyJob, type BackfillRun } from "@spec-bridge/backfill";
-import { parseRepoFullName, resolveGitHubAuth } from "@spec-bridge/github";
+import {
+  installationIdForRepo,
+  parseRepoFullName,
+  readAppCredentials,
+  resolveGitHubAuth,
+} from "@spec-bridge/github";
 import { PostgresJobStore } from "@spec-bridge/jobs";
+import { resolveDocsRepo } from "@spec-bridge/tenants";
 import { currentSession } from "@/lib/auth";
-import { databaseUrl, docsRepo } from "@/lib/config";
+import { databaseUrl, fallbackDocsRepo } from "@/lib/config";
+import { withTenants } from "@/lib/tenants";
 
 export const runtime = "nodejs";
 
@@ -50,11 +57,19 @@ export async function POST(request: Request): Promise<Response> {
     const auth = resolveGitHubAuth();
     await auth.forRepo(repo);
 
+    // 提出先は解析対象のインストールに紐づく。**積む前に決める**（後で分からないと困る）。
+    // PAT 運用では installation が無いので、env の提出先に落ちる
+    const credentials = readAppCredentials();
+    const installationId = credentials ? await installationIdForRepo(credentials, repo) : null;
+    const { docsRepo } = await withTenants((store) =>
+      resolveDocsRepo(store, installationId, fallbackDocsRepo()),
+    );
+
     const runId = randomUUID();
     const run: BackfillRun = {
       runId,
       repo,
-      docsRepo: docsRepo(),
+      docsRepo,
       branch: `spec-bridge/backfill-${parseRepoFullName(repo).repo}-${runId.slice(0, 8)}`,
       limit,
       budgetUsd,

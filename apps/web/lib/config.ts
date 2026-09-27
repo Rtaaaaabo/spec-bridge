@@ -66,12 +66,11 @@ export function databaseUrl(): string {
   return url;
 }
 
-/** 生成物の提出先 `org/repo`。いまは環境ごとに1つ（テナント表が入るまで） */
-export function docsRepo(): string {
+/**
+ * 提出先の既定。**インストールごとの設定が優先**で、これはその後ろに落ちる値。
+ * 単一テナント運用の後方互換なので、未設定でも構わない。
+ */
+export function fallbackDocsRepo(): string | undefined {
   ensureEnv();
-  const repo = process.env.SPEC_BRIDGE_DOCS_REPO?.trim();
-  if (!repo) {
-    throw new Error("SPEC_BRIDGE_DOCS_REPO が設定されていません（生成物の提出先）。");
-  }
-  return repo;
+  return process.env.SPEC_BRIDGE_DOCS_REPO?.trim() || undefined;
 }
