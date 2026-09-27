@@ -366,6 +366,7 @@ CLI では `--budget` で指定します。**打ち切った機能は docs リ�
 
 GitHub App の作成・権限・ローカルへのトンネリングの手順は
 [docs/github-app-setup.ja.md](docs/github-app-setup.ja.md) にあります。
+常時動かす（Fly.io へ出す）手順は [docs/deploy.ja.md](docs/deploy.ja.md) です。
 API の認証は App の installation access token（推奨）と PAT のどちらかを選べます。
 
 SaaS として動かすための設計（ジョブ分割・テナントごとの認証・提出の一般化）は

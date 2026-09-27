@@ -23,5 +23,9 @@ export function proxy(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ["/((?!login|api/github|_next/static|_next/image|favicon.ico).*)"],
+  // ログインの外側に置くのは3つだけ:
+  // ログイン画面 / OAuth の口 / webhook（署名で認証）/ 死活監視
+  matcher: [
+    "/((?!login|api/github|api/webhooks|api/health|_next/static|_next/image|favicon.ico).*)",
+  ],
 };

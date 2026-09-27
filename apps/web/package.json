@@ -10,6 +10,7 @@
   "dependencies": {
     "@spec-bridge/backfill": "workspace:*",
     "@spec-bridge/core": "workspace:*",
+    "@spec-bridge/ingest": "workspace:*",
     "@spec-bridge/jobs": "workspace:*",
     "@spec-bridge/tenants": "workspace:*",
     "@spec-bridge/github": "workspace:*",

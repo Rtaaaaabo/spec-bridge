@@ -1,0 +1,55 @@
+# spec-bridge の本番設定。
+#
+# **ホスト名は1つ。** Fly は1つのホスト名を複数プロセスへ振り分けられないので、
+# webhook の受け口は画面と同じプロセス（Next）に置いている。
+# 受信は「署名を検証して積むだけ」なので軽く、解析は worker が引き取る。
+app = "spec-bridge"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  # 画面（/、/runs、/installations）と webhook の受け口（/api/webhooks/github）
+  app = "pnpm --filter @spec-bridge/web start"
+  # 解析の実行。HTTP は持たない
+  worker = "pnpm --filter @spec-bridge/webhook worker"
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+  # 解析は数分かかる。既定は直列で、必要なら上げる（費用は変わらず実時間だけ縮む）
+  SPEC_BRIDGE_ANALYZE_CONCURRENCY = "1"
+  # PR 1本あたりの上限。大規模 PR は実測で6機能・約 $15
+  SPEC_BRIDGE_PR_BUDGET_USD = "10"
+  SPEC_BRIDGE_BASE_URL = "https://spec-bridge.fly.dev"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  # webhook を受けるプロセスなので、止まっていると配信を取りこぼす
+  processes = ["app"]
+
+  [http_service.http_options.response]
+    pristine = true
+
+[[http_service.checks]]
+  grace_period = "20s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/api/health"
+
+[[vm]]
+  # 解析対象の浅いクローンと Node を同時に抱えるので、512MB では足りない
+  size = "shared-cpu-2x"
+  memory = "2gb"
+  processes = ["worker"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  processes = ["app"]

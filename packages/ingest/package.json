@@ -1,0 +1,15 @@
+{
+  "name": "@spec-bridge/ingest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@spec-bridge/github": "workspace:*",
+    "@spec-bridge/jobs": "workspace:*",
+    "@spec-bridge/tenants": "workspace:*"
+  }
+}

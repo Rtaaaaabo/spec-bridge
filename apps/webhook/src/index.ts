@@ -1,13 +1,7 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import {
-  checkGitHubAuthConfig,
-  parseInstallationEvent,
-  parseMergedPullRequest,
-  resolveGitHubAuth,
-  verifyWebhookSignature,
-} from "@spec-bridge/github";
-import { analyzeJob } from "./analyze-job.ts";
+import { checkGitHubAuthConfig, resolveGitHubAuth } from "@spec-bridge/github";
+import { handleWebhookDelivery } from "@spec-bridge/ingest";
 import { createJobStore, createTenantStore, loadEnv, readConfig } from "./config.ts";
 import { createAnalyzeWorker } from "./worker.ts";
 
@@ -41,54 +35,21 @@ const app = new Hono();
 app.get("/health", (c) => c.json({ ok: true, docsRepo: config.docsRepo || null }));
 
 app.post("/webhooks/github", async (c) => {
-  const raw = await c.req.text();
-
-  // 署名検証がこのエンドポイントの唯一の認証。検証前の中身は一切信用しない
-  if (!verifyWebhookSignature(raw, c.req.header("x-hub-signature-256"), config.secret)) {
-    console.warn("[webhook] 署名検証に失敗しました");
-    return c.json({ error: "invalid signature" }, 401);
-  }
-
-  const payload: unknown = JSON.parse(raw);
-  const eventName = c.req.header("x-github-event");
-
-  // 「誰が使っているか」はここで分かる。提出先の設定はこの記録に紐づく
-  const installation = parseInstallationEvent(eventName, payload);
-  if (installation) {
-    try {
-      if (installation.removed) await tenants.remove(installation.installationId);
-      else await tenants.upsert({
-        installationId: installation.installationId,
-        account: installation.account,
-      });
-      console.log(
-        `[webhook] installation ${installation.installationId}（${installation.account}）→ ${installation.action}`,
-      );
-    } catch (error) {
-      console.error("[webhook] インストールを記録できませんでした:", error);
-    }
-    return c.json({ ok: true }, 202);
-  }
-
-  const event = parseMergedPullRequest(eventName, payload);
-  if (!event) {
-    // マージされた PR 以外は正常応答で無視する（GitHub 側でリトライされないように）
-    return c.json({ ignored: true }, 202);
-  }
-
-  // **ここでは積むだけ。** 解析は数分かかるうえ、受信プロセスで走らせると
-  // 再起動で仕事が消え、同時に複数来たときに詰まる。
-  try {
-    const { job, created } = await store.enqueue(analyzeJob(event));
-    console.log(
-      `[webhook] ${event.repo}#${event.number} → ${created ? "ジョブを積みました" : "積み済み（重複）"}: ${job.id}`,
-    );
-    return c.json({ accepted: true, jobId: job.id, duplicate: !created }, 202);
-  } catch (error) {
-    // 積めないのはこちら側の問題なので 500 を返す。GitHub が再送してくれる
-    console.error("[webhook] ジョブを積めませんでした:", error);
-    return c.json({ error: "failed to enqueue" }, 500);
-  }
+  // 受け口は Hono だが、署名検証とジョブ投入は共有実装（Next 側の入口と同じ道を通す）
+  const result = await handleWebhookDelivery(
+    {
+      rawBody: await c.req.text(),
+      event: c.req.header("x-github-event"),
+      signature: c.req.header("x-hub-signature-256"),
+    },
+    {
+      secret: config.secret,
+      jobs: store,
+      tenants,
+      log: (line) => console.log(line),
+    },
+  );
+  return c.json(result.body, result.status as 200);
 });
 
 if (config.inlineWorker) {
