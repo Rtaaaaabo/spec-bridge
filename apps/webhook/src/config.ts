@@ -55,10 +55,20 @@ export async function createTenantStore(
   return store;
 }
 
+/**
+ * PR 1本あたりの上限（USD）。
+ *
+ * 実測で大規模 PR は6機能・約 $15。webhook は自動で走るので、
+ * 既定の上限を置いておかないと、1回のマージでいくらでも使えてしまう。
+ */
+export const DEFAULT_PR_BUDGET_USD = 10;
+
 export interface WebhookConfig {
   secret: string;
   docsRepo: string;
   port: number;
+  /** PR 1本あたりの上限（USD） */
+  prBudgetUsd: number;
   databaseUrl: string | undefined;
   /** 受信プロセスの中でワーカーも回す（ローカル用。本番はプロセスを分ける） */
   inlineWorker: boolean;
@@ -69,6 +79,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): WebhookConfig 
     secret: env.GITHUB_WEBHOOK_SECRET ?? "",
     docsRepo: env.SPEC_BRIDGE_DOCS_REPO ?? "",
     port: Number(env.PORT ?? 3939),
+    prBudgetUsd: Number(env.SPEC_BRIDGE_PR_BUDGET_USD ?? DEFAULT_PR_BUDGET_USD),
     databaseUrl: env.DATABASE_URL,
     inlineWorker: env.SPEC_BRIDGE_INLINE_WORKER === "1",
   };

@@ -92,7 +92,13 @@ app.post("/webhooks/github", async (c) => {
 });
 
 if (config.inlineWorker) {
-  const worker = createAnalyzeWorker({ store, tenants, auth, docsRepo: config.docsRepo });
+  const worker = createAnalyzeWorker({
+    store,
+    tenants,
+    auth,
+    docsRepo: config.docsRepo,
+    prBudgetUsd: config.prBudgetUsd,
+  });
   void worker.start();
   console.log("インラインのワーカーを起動しました（SPEC_BRIDGE_INLINE_WORKER=1）");
 }

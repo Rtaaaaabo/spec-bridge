@@ -262,3 +262,30 @@ test("対象が0件なら比率だけ出す（0/0 と書かない）", () => {
   assert.match(body, /変更ファイル読了 1\.00 /);
   assert.doesNotMatch(body, /0\/0/);
 });
+
+// --- 予算で書けなかった機能（PR を「全部書けた」ように見せない） ---
+
+test("予算で書けなかった機能を本文に出す", () => {
+  const body = buildDocsPullRequestBody(
+    {
+      kind: "pull-request",
+      pr,
+      skippedTargets: [
+        { id: "bot-notification-exclusion", title: "Bot への通知抑制" },
+        { id: "user-type-api", title: "ユーザー種別 API" },
+      ],
+    },
+    [change("invite", "メンバー招待")],
+  );
+  assert.match(body, /予算に達したため書けなかった機能（2 件）/);
+  assert.match(body, /Bot への通知抑制/);
+  assert.match(body, /予算を上げて同じ PR を解析し直す/);
+});
+
+test("打ち切りが無ければ、その節は出さない", () => {
+  const body = buildDocsPullRequestBody(
+    { kind: "pull-request", pr, skippedTargets: [] },
+    [change("invite", "メンバー招待")],
+  );
+  assert.doesNotMatch(body, /予算に達したため/);
+});

@@ -19,12 +19,28 @@ export interface RunOptions {
   allowBash?: boolean;
   /** true なら分類をスキップして必ず解析する */
   force?: boolean;
+  /**
+   * この PR 1本で使ってよい額（USD）。超えたら残りの機能を書かずに終える。
+   *
+   * 大規模 PR は実測で **6機能・約 $15**（gitea #38966）。上限が無いと、
+   * 1回のマージでいくらでも使えてしまう。**書けなかった機能は結果に残す**ので、
+   * 予算を上げて再実行すれば続きから拾える。
+   */
+  budgetUsd?: number;
   log?: (line: string) => void;
+}
+
+/** 予算に達して書けなかった機能。**黙って落とさず、必ず結果に残す** */
+export interface SkippedTarget {
+  id: string;
+  title: string;
 }
 
 export interface RunResult {
   skipped: boolean;
   classification: ClassifyResult;
+  /** 予算に達したため書かなかった機能 */
+  skippedTargets: SkippedTarget[];
   updated: Array<{
     id: string;
     path: string;
@@ -63,15 +79,30 @@ export async function runPipeline(
   log(`  → ${classification.affectsSpec ? "影響あり" : "影響なし"}: ${classification.reason}`);
 
   if (!classification.affectsSpec && !options.force) {
-    return { skipped: true, classification, updated: [], failures: [], usage: tally.summary() };
+    return {
+      skipped: true,
+      classification,
+      skippedTargets: [],
+      updated: [],
+      failures: [],
+      usage: tally.summary(),
+    };
   }
   if (classification.targets.length === 0) {
     log("  対象機能が特定できませんでした。スキップします。");
-    return { skipped: true, classification, updated: [], failures: [], usage: tally.summary() };
+    return {
+      skipped: true,
+      classification,
+      skippedTargets: [],
+      updated: [],
+      failures: [],
+      usage: tally.summary(),
+    };
   }
 
   const updated: RunResult["updated"] = [];
   const failures: RunResult["failures"] = [];
+  const skippedTargets: SkippedTarget[] = [];
   const source = sourceFromPullRequest(pr);
 
   for (const target of classification.targets) {
@@ -83,6 +114,17 @@ export async function runPipeline(
     // 保存時にも弾かれるが、そこまで行くと数分の解析が無駄になる
     if (!isValidDocId(id)) {
       failures.push({ id, error: `ID に使えない文字が含まれています: ${JSON.stringify(id)}` });
+      continue;
+    }
+
+    // 予算は着手前に見る。走らせてから超過に気づいても、その1件の費用はもう出ている。
+    // 分類は影響の大きい順に並べているので、落ちるのは末尾から
+    if (options.budgetUsd !== undefined && tally.summary().costUsd >= options.budgetUsd) {
+      log(
+        `⏭ 「${target.title}」(${id}) は予算に達したため書きません` +
+          `（$${tally.summary().costUsd.toFixed(2)} / 上限 $${options.budgetUsd}）`,
+      );
+      skippedTargets.push({ id, title: target.title });
       continue;
     }
 
@@ -137,7 +179,21 @@ export async function runPipeline(
     log(`▸ インデックスページを更新しました`);
   }
 
-  return { skipped: false, classification, updated, failures, usage: tally.summary() };
+  if (skippedTargets.length > 0) {
+    log(
+      `⚠ 予算（$${options.budgetUsd}）に達したため ${skippedTargets.length} 件の機能を書いていません。` +
+        `予算を上げて再実行すると続きから拾えます。`,
+    );
+  }
+
+  return {
+    skipped: false,
+    classification,
+    skippedTargets,
+    updated,
+    failures,
+    usage: tally.summary(),
+  };
 }
 
 export interface BackfillOptions {

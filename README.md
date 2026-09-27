@@ -189,6 +189,7 @@ The estimate is priced at API rates; if you authenticate with a Claude subscript
 
 | Option | Description |
 | --- | --- |
+| `--budget <usd>` | Spending cap for this pull request; remaining features are skipped past it (unlimited by default) |
 | `--force` | Analyze even when classified as spec-irrelevant |
 | `--allow-bash` | Allow the agent to use Bash (e.g. to follow `git log`) |
 | `--quiet` | Suppress progress output |
@@ -341,6 +342,12 @@ merged PR → webhook → verify signature → enqueue (the same merge is never 
 Source code only ever lands in a temporary directory and is deleted after the run. The pull request
 against the docs repository *is* the review gate: generated content is `status: draft` until a human
 merges it.
+
+**Spending cap.** A large pull request measured at six features and roughly $15 (gitea #38966, 71 files).
+Over the webhook, `SPEC_BRIDGE_PR_BUDGET_USD` (default $10) cuts the run short; the CLI takes `--budget`.
+**Features that were skipped are named in the docs pull request**, so raising the budget and re-running
+picks up where it stopped. The cap is checked before each feature starts, so the total can exceed it by
+one feature's cost.
 
 Where documents are submitted is configured **per installation** (in the UI at `/installations`).
 Installations without a setting fall back to `SPEC_BRIDGE_DOCS_REPO`, so a single organisation can run on
