@@ -92,3 +92,19 @@ export function buildDiffBlock(
 
   return { text: chunks.join("\n\n"), omitted };
 }
+
+/**
+ * 分類がどの機能にも触れず、`unclassified` にも書かなかったファイル。
+ *
+ * **「黙って落とさない」を機械で確かめる。** 分類に「全部どこかに書け」と指示しても、
+ * 実際には抜ける（実測で71ファイル中1件が、targets にも unclassified にも入らなかった）。
+ * 指示は守られたか確かめられないが、これは数えれば分かる。
+ */
+export function unmentionedFiles(
+  changed: string[],
+  assigned: string[][],
+  unclassified: string[],
+): string[] {
+  const mentioned = new Set<string>([...assigned.flat(), ...unclassified]);
+  return changed.filter((file) => !mentioned.has(file));
+}

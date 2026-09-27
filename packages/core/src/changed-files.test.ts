@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDiffBlock, formatChangedFiles, MAX_LISTED_FILES } from "./changed-files.ts";
+import {
+  buildDiffBlock,
+  formatChangedFiles,
+  MAX_LISTED_FILES,
+  unmentionedFiles,
+} from "./changed-files.ts";
 import type { ChangedFile } from "./types.ts";
 
 const file = (filename: string, patch: string | null = "@@ -1 +1 @@"): ChangedFile => ({
@@ -83,4 +88,24 @@ test("1件目が予算を超えても、その1件は載せる", () => {
 test("差分が取れないファイルはその旨を書く", () => {
   const { text } = buildDiffBlock([file("image.png", null)], [], 10_000);
   assert.match(text, /差分省略/);
+});
+
+// --- 取りこぼしの検出（分類が全部に触れたかを機械で確かめる） ---
+
+test("どこにも書かれなかったファイルを見つける", () => {
+  const missed = unmentionedFiles(
+    ["a.ts", "b.ts", "c.ts", "d.ts"],
+    [["a.ts"], ["b.ts"]],
+    ["c.ts"],
+  );
+  assert.deepEqual(missed, ["d.ts"]);
+});
+
+test("全部どこかに書かれていれば空", () => {
+  assert.deepEqual(unmentionedFiles(["a.ts"], [["a.ts"]], []), []);
+  assert.deepEqual(unmentionedFiles(["a.ts"], [], ["a.ts"]), []);
+});
+
+test("複数の機能に重複して割り当てられていても数えない", () => {
+  assert.deepEqual(unmentionedFiles(["a.ts", "b.ts"], [["a.ts"], ["a.ts", "b.ts"]], []), []);
 });
