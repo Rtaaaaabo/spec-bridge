@@ -217,6 +217,20 @@ source pull request, the body states **which commit the documents were written f
 **surveyed / generated / failed** counts, elapsed time, and estimated cost. If the working tree has
 uncommitted changes, no origin commit is stated — that SHA would not be an honest origin.
 
+#### Watching and starting runs from the UI
+
+`pnpm web` serves `/runs`, a list of backfill runs. The point is that **cost and "did it finish?" are
+visible**: a run cut short by its budget is shown as such, not as "done".
+
+| Shown | |
+| --- | --- |
+| Progress | `3 / 8 features` ("surveying…" before the survey completes) |
+| Cost | Spend so far, against that run's cap |
+| Outcome | Link to the submitted pull request, failure count, last error |
+| Recent PR analyses | What the webhook enqueued — the place to look when a merge seems to do nothing |
+
+Runs can also be started from that page (target repository, feature cap, budget).
+
 #### Running it as jobs (split per feature)
 
 `pnpm backfill` processes every feature in one local run. Each feature takes minutes and can hit the

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
 import { parseRepoFullName, resolveGitHubAuth } from "@spec-bridge/github";
 import { PostgresJobStore } from "@spec-bridge/jobs";
-import { DEFAULT_BUDGET_USD, surveyJob, type BackfillRun } from "./backfill-job.ts";
+import { DEFAULT_BUDGET_USD, surveyJob, type BackfillRun } from "@spec-bridge/backfill";
 import { loadEnv, readConfig } from "./config.ts";
 
 const USAGE = `バックフィルをジョブとして積む（実行は pnpm worker 側）

@@ -1,0 +1,14 @@
+{
+  "name": "@spec-bridge/backfill",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@spec-bridge/core": "workspace:*",
+    "@spec-bridge/jobs": "workspace:*"
+  }
+}

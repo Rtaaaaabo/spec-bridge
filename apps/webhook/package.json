@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.0.12",
+    "@spec-bridge/backfill": "workspace:*",
     "@spec-bridge/core": "workspace:*",
     "@spec-bridge/github": "workspace:*",
     "@spec-bridge/jobs": "workspace:*",
