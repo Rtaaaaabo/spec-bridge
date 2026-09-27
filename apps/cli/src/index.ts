@@ -11,6 +11,7 @@ import {
   buildDocsPullRequestTitle,
   coverageLabel,
   DocStore,
+  formatCoverage,
   formatQuestion,
   formatUsageSummary,
   INDEX_PAGE,
@@ -126,7 +127,7 @@ function reportDoc(doc: RunResult["updated"][number]): void {
   console.log(`  ${doc.path}`);
   console.log(
     `  内訳: 出典の実在 ${b.sourceValidity.toFixed(2)} / ` +
-      `${coverageLabel(b.coverageKind)} ${b.readCoverage.toFixed(2)} / ` +
+      `${coverageLabel(b.coverageKind)} ${formatCoverage(b)} / ` +
       `出典の密度 ${b.citationDensity.toFixed(2)} / ` +
       `確定度 ${b.determinacy.toFixed(2)}` +
       `（モデル自己申告 ${b.selfReported.toFixed(2)}）`,
@@ -137,6 +138,24 @@ function reportDoc(doc: RunResult["updated"][number]): void {
     if (questions.length === 0) continue;
     console.log(`  ? ${QUESTION_KIND_LABEL[kind]} ${questions.length} 件:`);
     for (const q of questions) console.log(`    - ${formatQuestion(q)}`);
+  }
+}
+
+/**
+ * どの機能にも割り当てなかった変更を表示する。
+ *
+ * **取りこぼしは、見えなければ無いのと同じ。** 大規模 PR ではここに
+ * 「ドキュメントが要る変更」が紛れていないかを人が見る。
+ */
+function reportUnclassified(unclassified: { files: string[]; note: string }): void {
+  if (unclassified.files.length === 0) return;
+
+  console.log("");
+  console.log(`▸ どの機能にも割り当てなかった変更: ${unclassified.files.length} ファイル`);
+  if (unclassified.note) console.log(`  ${unclassified.note}`);
+  for (const file of unclassified.files.slice(0, 20)) console.log(`    - ${file}`);
+  if (unclassified.files.length > 20) {
+    console.log(`    … ほか ${unclassified.files.length - 20} ファイル`);
   }
 }
 
@@ -203,6 +222,7 @@ async function runAnalyzeCommand(
   console.log("── 結果 ──");
   for (const doc of result.updated) reportDoc(doc);
   for (const f of result.failures) console.log(`✗ ${f.id}: ${f.error}`);
+  reportUnclassified(result.classification.unclassified);
   reportUsage(result.usage);
 
   return result.failures.length > 0 ? 1 : 0;

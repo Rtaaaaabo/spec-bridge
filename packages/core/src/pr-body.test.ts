@@ -28,6 +28,8 @@ const breakdown: ConfidenceBreakdown = {
   sourceValidity: 1,
   readCoverage: 0.8,
   coverageKind: "changed-files",
+  coverageRead: 8,
+  coverageTotal: 10,
   citationDensity: 1,
   determinacy: 0.75,
   selfReported: 0.8,
@@ -238,4 +240,25 @@ test("ファイルが多いときは一部だけ並べて件数を書く", () =>
   );
   assert.match(body, /50 ファイル/);
   assert.match(body, /ほか 10 ファイル/);
+});
+
+// --- 読了の内訳（比率だけでは解釈できない） ---
+
+test("読了率に分子と分母を添える", () => {
+  const body = buildDocsPullRequestBody(source, [
+    change("invite", "招待", {
+      breakdown: { ...breakdown, coverageKind: "feature-files", readCoverage: 0.26, coverageRead: 7, coverageTotal: 27 },
+    }),
+  ]);
+  assert.match(body, /この機能の変更ファイル読了 0\.26（7\/27 ファイル）/);
+});
+
+test("対象が0件なら比率だけ出す（0/0 と書かない）", () => {
+  const body = buildDocsPullRequestBody(source, [
+    change("invite", "招待", {
+      breakdown: { ...breakdown, readCoverage: 1, coverageRead: 0, coverageTotal: 0 },
+    }),
+  ]);
+  assert.match(body, /変更ファイル読了 1\.00 /);
+  assert.doesNotMatch(body, /0\/0/);
 });
