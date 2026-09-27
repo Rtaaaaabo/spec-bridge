@@ -2,14 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "./lib/session.ts";
 
 /**
- * ログイン画面への振り分け。**これは認証ではない。**
+ * ログイン画面への振り分け。**これは認証ではない。**（Next 16 で middleware から proxy に改称）
  *
  * Edge ランタイムからはモノレポルートの `.env` を読めないので、ここでは署名鍵を持てない。
  * したがって Cookie の**有無**しか見ていない。
  * **本当の検証はサーバー側の `currentSession()`**（`lib/auth.ts`）で、
  * 画面と API はそちらを必ず通す。
  */
-export function middleware(request: NextRequest): NextResponse {
+export function proxy(request: NextRequest): NextResponse {
   if (request.cookies.has(SESSION_COOKIE)) return NextResponse.next();
 
   // 画面はログインへ、API は 401（リダイレクトされた HTML を JSON として読ませない）

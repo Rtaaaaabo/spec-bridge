@@ -67,7 +67,7 @@ App 運用では docs リポジトリにも App を入れる必要がありま�
 - `GET /api/github/callback` → `code` を交換し、**署名付きセッション Cookie** を発行
 - `/login`、`/installations`（App が読めるリポジトリの一覧）、ログアウト
 - **アクセストークンは保存しない。** Cookie が漏れても、そのままリポジトリを触れる鍵にはしない
-- **`middleware.ts` は認証ではない。** Edge ランタイムからはルートの `.env` を読めず署名鍵を持てないので、
+- **`proxy.ts`（旧 middleware）は認証ではない。** Edge ランタイムからはルートの `.env` を読めず署名鍵を持てないので、
   Cookie の有無だけを見て振り分ける。本当の検証はサーバー側の `currentSession()`。
   この区別を曖昧にすると「middleware があるから安全」と誤解して穴が空く
 
