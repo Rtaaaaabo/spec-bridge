@@ -16,6 +16,7 @@ import {
   estimateRun,
   formatCoverage,
   formatEstimate,
+  unmentionedFiles,
   formatQuestion,
   formatUsageSummary,
   INDEX_PAGE,
@@ -171,6 +172,7 @@ async function reportEstimateOnly(
   console.log(formatEstimate(estimate));
   console.log(`（${estimate.basis}）`);
   reportUnclassified(classification.unclassified);
+  reportUnmentioned(pr.changedFiles.map((f) => f.filename), classification);
   console.log("");
   console.log("実際に解析するには --estimate を外して実行してください。");
   reportUsage(tally.summary());
@@ -214,6 +216,30 @@ function reportUnclassified(unclassified: { files: string[]; note: string }): vo
   if (unclassified.files.length > 20) {
     console.log(`    … ほか ${unclassified.files.length - 20} ファイル`);
   }
+}
+
+/**
+ * 分類がどこにも書かなかったファイルを出す。
+ *
+ * プロンプトで「全部どこかに書け」と指示しても抜けることがある
+ * （実測で71ファイル中1件）。指示が守られたかは数えれば分かる。
+ */
+function reportUnmentioned(
+  changedFiles: string[],
+  classification: { targets: Array<{ files: string[] }>; unclassified: { files: string[] } },
+): void {
+  const missed = unmentionedFiles(
+    changedFiles,
+    classification.targets.map((t) => t.files),
+    classification.unclassified.files,
+  );
+  if (missed.length === 0) return;
+
+  console.log("");
+  console.log(`⚠ 分類がどこにも触れなかった変更: ${missed.length} ファイル`);
+  console.log(`  仕様に影響しないか、目視で確認してください。`);
+  for (const file of missed.slice(0, 20)) console.log(`    - ${file}`);
+  if (missed.length > 20) console.log(`    … ほか ${missed.length - 20} ファイル`);
 }
 
 /** 所要時間と推定コストを表示する。LP や記事に載せる実測値の出どころになる */
@@ -297,6 +323,7 @@ async function runAnalyzeCommand(
     console.log(`⏭ ${t.id}（${t.title}）: 予算に達したため書いていません`);
   }
   reportUnclassified(result.classification.unclassified);
+  reportUnmentioned(pr.changedFiles.map((f) => f.filename), result.classification);
   reportUsage(result.usage);
 
   return result.failures.length > 0 ? 1 : 0;
