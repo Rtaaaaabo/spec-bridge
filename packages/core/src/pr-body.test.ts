@@ -204,3 +204,38 @@ test("変更が0件でも壊れたタイトルを作らない", () => {
   assert.equal(buildDocsPullRequestTitle(backfill, []), "docs: acme/backend のバックフィル");
   assert.equal(buildDocsPullRequestTitle(source, []), "docs: acme/backend#482");
 });
+
+// --- 割り当てなかった変更（取りこぼしをレビュアーに見せる） ---
+
+test("どの機能にも割り当てなかった変更を本文に出す", () => {
+  const body = buildDocsPullRequestBody(
+    {
+      kind: "pull-request",
+      pr,
+      unclassified: { files: ["services/auth/oauth2.go", "ci/build.yml"], note: "判断できず" },
+    },
+    [change("invite", "メンバー招待")],
+  );
+  assert.match(body, /どの機能にも割り当てなかった変更（2 ファイル）/);
+  assert.match(body, /services\/auth\/oauth2\.go/);
+  assert.match(body, /判断できず/);
+  assert.match(body, /確認してください/);
+});
+
+test("割り当て漏れが無ければ、その節は出さない", () => {
+  const body = buildDocsPullRequestBody(
+    { kind: "pull-request", pr, unclassified: { files: [], note: "" } },
+    [change("invite", "メンバー招待")],
+  );
+  assert.doesNotMatch(body, /割り当てなかった変更/);
+});
+
+test("ファイルが多いときは一部だけ並べて件数を書く", () => {
+  const files = Array.from({ length: 50 }, (_, i) => `src/f${i}.go`);
+  const body = buildDocsPullRequestBody(
+    { kind: "pull-request", pr, unclassified: { files, note: "" } },
+    [change("invite", "招待")],
+  );
+  assert.match(body, /50 ファイル/);
+  assert.match(body, /ほか 10 ファイル/);
+});

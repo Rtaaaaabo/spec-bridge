@@ -9,7 +9,10 @@ import { formatUsageSummary, type UsageSummary } from "./usage.ts";
  * PR 解析とバックフィルで指標が違うので、同じ名前で並べるとレビュアーが誤読する。
  */
 export function coverageLabel(kind: CoverageKind): string {
-  return kind === "cited-files" ? "出典ファイル読了" : "変更ファイル読了";
+  if (kind === "cited-files") return "出典ファイル読了";
+  // 全変更ファイルを測ったのか、この機能に割り当てられたぶんだけかで意味が違う
+  if (kind === "feature-files") return "この機能の変更ファイル読了";
+  return "変更ファイル読了";
 }
 
 export interface DocChange {
@@ -25,8 +28,14 @@ export interface DocChange {
  * 「どのコミットのコードから起こしたか」と「何件中何件を書けたか」を代わりに出す。
  * **途中で終わったランを、レビュアーが見て分かるようにするのが目的。**
  */
+/** どの機能にも割り当てなかった変更。**レビュアーが見落としを見つけるための欄** */
+export interface UnclassifiedChanges {
+  files: string[];
+  note: string;
+}
+
 export type DocsPrSource =
-  | { kind: "pull-request"; pr: PullRequestInput }
+  | { kind: "pull-request"; pr: PullRequestInput; unclassified?: UnclassifiedChanges }
   | {
       kind: "backfill";
       /** `org/repo` */
@@ -107,6 +116,8 @@ export function buildDocsPullRequestBody(
     }
   }
 
+  lines.push(...unclassifiedLines(source));
+
   lines.push(
     "---",
     "",
@@ -129,6 +140,38 @@ export function buildDocsPullRequestTitle(source: DocsPrSource, changes: DocChan
 
   const subject = titles.length === 1 ? titles[0] : `${titles[0]} ほか ${titles.length - 1} 件`;
   return `docs: ${subject}（${suffix}）`;
+}
+
+/**
+ * どの機能にも割り当てなかった変更を並べる。
+ *
+ * **これが無いと、取りこぼしは誰にも見えない。** 実際に71ファイルの PR で
+ * 認証まわりの変更が黙って落ちた。レビュアーがここを見て「この変更は本当に
+ * ドキュメント不要か」を判断できるようにする。
+ */
+function unclassifiedLines(source: DocsPrSource): string[] {
+  if (source.kind !== "pull-request") return [];
+  const unclassified = source.unclassified;
+  if (!unclassified || unclassified.files.length === 0) return [];
+
+  const shown = unclassified.files.slice(0, 40);
+  const omitted = unclassified.files.length - shown.length;
+
+  return [
+    `## どの機能にも割り当てなかった変更（${unclassified.files.length} ファイル）`,
+    "",
+    unclassified.note || "（理由の記載なし）",
+    "",
+    "**ここにドキュメントが要る変更が混ざっていないか確認してください。**",
+    "",
+    "<details><summary>ファイル一覧</summary>",
+    "",
+    ...shown.map((file) => `- \`${file}\``),
+    ...(omitted > 0 ? [`- … ほか ${omitted} ファイル`] : []),
+    "",
+    "</details>",
+    "",
+  ];
 }
 
 /** 冒頭の説明。ここだけが出どころによって変わる */

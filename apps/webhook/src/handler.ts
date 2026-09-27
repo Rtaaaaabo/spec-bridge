@@ -177,7 +177,11 @@ export async function handleMergedPullRequest(
       files,
       {
         title: buildDocsPullRequestTitle({ kind: "pull-request", pr }, changes),
-        body: buildDocsPullRequestBody({ kind: "pull-request", pr }, changes),
+        // 割り当てなかった変更も本文に出す。取りこぼしはレビュアーにしか見つけられない
+        body: buildDocsPullRequestBody(
+          { kind: "pull-request", pr, unclassified: result.classification.unclassified },
+          changes,
+        ),
         branchSuffix: `${repo}-${event.number}`,
       },
       docs.octokit,

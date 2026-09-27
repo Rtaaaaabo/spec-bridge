@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { extractJson, runAgent, runAgentDetailed, READ_ONLY_DENY_LIST } from "./agent.ts";
+import { buildDiffBlock, formatChangedFiles } from "./changed-files.ts";
 import { computeConfidence, pruneInvalidSources, type ConfidenceBreakdown } from "./confidence.ts";
 import { verifyQuestionEvidence } from "./questions.ts";
 import { FeatureDocBody, type FeatureDoc, type PullRequestInput } from "./types.ts";
@@ -93,7 +94,9 @@ ${procedure}
 
 /** PR の差分を起点に更新するときの進め方 */
 const PR_PROCEDURE = `# 進め方
-1. まず変更されたファイルを Read で読む。差分だけでは仕様はわからないので、周辺のコード（呼び出し元、型定義、バリデーション、ルーティング、権限チェック）も辿る。
+1. **「この機能に関係する変更ファイル」に挙がっているファイルは、すべて Read で開く。**
+   差分だけでは仕様はわからないので、周辺のコード（呼び出し元、型定義、バリデーション、
+   ルーティング、権限チェック）も辿る。大きな PR では、この機能に関係しないファイルまで読む必要はない。
 2. 画面を扱う変更なら、ルーティング定義を Glob / Grep で探して \`screens\` を埋める。API なら同様に \`endpoints\` を埋める。
 3. 権限・ロールのチェックがあれば必ず \`permissions\` に反映する。権限の抜けや食い違いは、読み手への影響が最も大きい。
 4. \`testPoints.regression\` には、この変更が壊しうる**既存**機能の観点を書く。新機能のテストより回帰範囲のほうが QA には価値がある。
@@ -144,10 +147,18 @@ const BODY_JSON_SCHEMA = JSON.stringify(
   2,
 );
 
+/** 解析する機能の指定。`files` は分類が割り当てた「この機能に関係する変更ファイル」 */
+export interface AnalyzeTarget {
+  id: string;
+  title: string;
+  why: string;
+  files?: string[];
+}
+
 function buildPrompt(
   subject: AnalysisSubject,
   existing: FeatureDoc | null,
-  target: { id: string; title: string; why: string },
+  target: AnalyzeTarget,
 ): string {
   const repo = subjectRepo(subject);
 
@@ -170,7 +181,7 @@ function buildPrompt(
 
   const detail =
     subject.kind === "pull-request"
-      ? buildPullRequestDetail(subject.pr)
+      ? buildPullRequestDetail(subject.pr, target.files ?? [])
       : buildCodebaseDetail(subject.entryPoints);
 
   return [
@@ -190,13 +201,25 @@ function buildPrompt(
   ].join("\n");
 }
 
-function buildPullRequestDetail(pr: PullRequestInput): string[] {
-  const diff = pr.changedFiles
-    .map((f) => {
-      const header = `--- ${f.filename} (${f.status}, +${f.additions}/-${f.deletions})`;
-      return f.patch ? `${header}\n${f.patch}` : `${header}\n(差分省略: バイナリまたは巨大な変更)`;
-    })
-    .join("\n\n");
+/** 差分に使ってよい文字数。これを超えるぶんは件数を明記して落とす */
+const DIFF_BUDGET = 180_000;
+
+function buildPullRequestDetail(pr: PullRequestInput, focusFiles: string[]): string[] {
+  // この機能に関係するファイルの差分を先に載せる。
+  // 予算は先頭から使うので、関係ないファイルで埋まって肝心の差分が切れるのを防ぐ
+  const diff = buildDiffBlock(pr.changedFiles, focusFiles, DIFF_BUDGET);
+
+  const focusBlock =
+    focusFiles.length > 0
+      ? [
+          `# この機能に関係する変更ファイル（${focusFiles.length}件）`,
+          focusFiles.map((f) => `- ${f}`).join("\n"),
+          "",
+          `**まずこれらを Read で開いてください。** 差分だけでは仕様は分かりません。`,
+          `ここに挙がっていなくても、関係すると判断したファイルは読んで構いません。`,
+          "",
+        ]
+      : [];
 
   return [
     `# PR`,
@@ -205,9 +228,16 @@ function buildPullRequestDetail(pr: PullRequestInput): string[] {
     "",
     pr.body || "(本文なし)",
     "",
+    ...focusBlock,
+    `# 変更ファイル一覧（${pr.changedFiles.length}件）`,
+    formatChangedFiles(pr.changedFiles),
+    "",
     `# 差分`,
+    diff.omitted > 0
+      ? `（${diff.omitted} ファイルの差分は大きさのため省略しました。必要なら Read で直接開いてください）`
+      : "",
     "```diff",
-    diff.slice(0, 180_000),
+    diff.text,
     "```",
   ];
 }
@@ -231,7 +261,7 @@ function buildCodebaseDetail(entryPoints: string[]): string[] {
 export async function analyzeFeature(
   subject: AnalysisSubject,
   existing: FeatureDoc | null,
-  target: { id: string; title: string; why: string },
+  target: AnalyzeTarget,
   options: AnalyzeOptions,
 ): Promise<AnalyzeResult> {
   const tools = ["Read", "Grep", "Glob"];
@@ -262,7 +292,7 @@ export async function analyzeFeature(
   const resultText = run.text;
 
   const first = tryParse(resultText);
-  if (first.ok) return finalize(first.value, subject, options, run.filesRead);
+  if (first.ok) return finalize(first.value, subject, target, options, run.filesRead);
 
   // 調査には多くのツール呼び出しを費やしている。形式が違うだけで捨てるのは損なので、
   // 内容を保ったまま構造だけ直させる往復を1回だけ挟む。
@@ -294,7 +324,7 @@ export async function analyzeFeature(
   });
 
   const second = tryParse(repaired);
-  if (second.ok) return finalize(second.value, subject, options, run.filesRead);
+  if (second.ok) return finalize(second.value, subject, target, options, run.filesRead);
 
   const dumpPath = await dumpFailure(target.id, resultText, repaired);
   throw new Error(
@@ -313,6 +343,7 @@ export async function analyzeFeature(
 function finalize(
   output: AnalyzeOutput,
   subject: AnalysisSubject,
+  target: AnalyzeTarget,
   options: AnalyzeOptions,
   filesRead: string[],
 ): AnalyzeResult {
@@ -341,6 +372,8 @@ function finalize(
     currentRepo: repo,
     // PR が無い解析では null。空配列を渡すと読了率が満点になる
     changedFiles: subjectChangedFiles(subject),
+    // 分類がこの機能に割り当てたファイル。あればこちらで読了率を測る
+    featureFiles: subject.kind === "pull-request" ? (target.files ?? null) : null,
     filesRead,
     selfReported: output.confidence,
   });

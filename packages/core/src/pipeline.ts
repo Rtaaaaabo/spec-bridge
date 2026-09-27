@@ -92,7 +92,7 @@ export async function runPipeline(
       const result = await analyzeFeature(
         { kind: "pull-request", pr },
         existing,
-        { id, title: target.title, why: target.why },
+        { id, title: target.title, why: target.why, files: target.files },
         {
           repoPath: options.repoPath,
           allowBash: options.allowBash,
