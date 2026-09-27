@@ -279,6 +279,18 @@ async function runAnalyzeCommand(
     return 1;
   }
 
+  // 数値の検証は、ネットワークにも LLM にも触る前に済ませる
+  const budgetUsd = options.budget ? Number(options.budget) : undefined;
+  if (budgetUsd !== undefined && (!Number.isFinite(budgetUsd) || budgetUsd <= 0)) {
+    console.error(`エラー: --budget は正の数で指定してください: "${options.budget}"`);
+    return 1;
+  }
+  const concurrency = options.concurrency ? Number(options.concurrency) : undefined;
+  if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) {
+    console.error(`エラー: --concurrency は1以上の整数で指定してください: "${options.concurrency}"`);
+    return 1;
+  }
+
   const repoPath = await assertDirectory(options.repo, "--repo");
   const docsPath = expandHome(options.docs);
 
@@ -289,21 +301,9 @@ async function runAnalyzeCommand(
   const pr = await fetchPullRequest(ref, octokit);
   log(`  ${pr.title}（${pr.changedFiles.length} ファイル変更）`);
 
-  const budgetUsd = options.budget ? Number(options.budget) : undefined;
-  if (budgetUsd !== undefined && (!Number.isFinite(budgetUsd) || budgetUsd <= 0)) {
-    console.error(`エラー: --budget は正の数で指定してください: "${options.budget}"`);
-    return 1;
-  }
-
   // 分類だけ流して、いくらかかるかを先に知る。高くつく PR は走らせる前に分かる
   if (options.estimateOnly) {
     return reportEstimateOnly(pr, docsPath, budgetUsd, log);
-  }
-
-  const concurrency = options.concurrency ? Number(options.concurrency) : undefined;
-  if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) {
-    console.error(`エラー: --concurrency は1以上の整数で指定してください: "${options.concurrency}"`);
-    return 1;
   }
 
   const result = await runPipeline(pr, {
