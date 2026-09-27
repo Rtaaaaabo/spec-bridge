@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { extractJson, runAgent, NO_TOOLS_DENY_LIST } from "./agent.ts";
+import { formatChangedFiles } from "./changed-files.ts";
 import type { FeatureDocIndexEntry, PullRequestInput } from "./types.ts";
 import type { AgentUsage } from "./usage.ts";
 
@@ -22,9 +23,20 @@ export const ClassifyResult = z.object({
           .describe("新規の場合の kebab-case ID。既存に紐づくなら null"),
         title: z.string(),
         why: z.string(),
+        files: z
+          .array(z.string())
+          .default([])
+          .describe("この機能に関係する変更ファイル。後段の解析はここから読み始める"),
       }),
     )
     .default([]),
+  unclassified: z
+    .object({
+      files: z.array(z.string()).default([]),
+      note: z.string().default(""),
+    })
+    .default({ files: [], note: "" })
+    .describe("どの機能にも割り当てなかった変更。黙って落とさず、ここに残す"),
 });
 export type ClassifyResult = z.infer<typeof ClassifyResult>;
 
@@ -50,7 +62,22 @@ const SYSTEM = `あなたはソフトウェアの変更を仕様の観点で分�
 3. どちらにも該当しなければ newDocId を付けて新規作成する。
 
 判断に迷うときは affectsSpec: true に倒してよい。ただし明確に内部的な変更を true にはしないこと。
-targets は多くても3件まで。1つの PR が4つ以上の機能に跨るなら、それは分割すべき PR なので最も中心的なものだけ挙げる。
+
+# 大きな PR で機能を取りこぼさない（最重要）
+**影響を受けた機能は漏らさず挙げてください。** 1つの PR が複数の機能に跨るのは普通のことです
+（特に OSS や大きなリポジトリでは、PR を機能ごとに分ける運用になっていません）。
+中心的なものだけに絞ると、**更新されるべきドキュメントが黙って取り残されます**
+（実際に71ファイルの PR で、認証まわりの変更が誰にも気づかれずに落ちました）。
+
+- targets は最大6件。それを超えるほど広い PR なら、影響の大きい順に6件を挙げ、
+  **残りは必ず unclassified に書く**。
+- 各 target の \`files\` に、その機能に関係する変更ファイルを挙げる。
+  後段の解析はここを起点に読むので、**関係するファイルを落とさないこと**。
+  1つのファイルが複数の機能に関係するなら、両方に挙げてよい。
+- **どの機能にも割り当てなかったファイルは unclassified.files に入れる。**
+  仕様に影響しないと判断したもの（テスト・CI・依存更新など）もここに入れ、
+  その理由を note に1行で書く。**黙って落とすことだけはしない。**
+  レビュアーはこれを見て「見落としていないか」を判断します。
 
 ファイルを読む必要はありません。与えられた情報だけで判断してください。
 出力は以下の形の JSON をひとつだけ、\`\`\`json フェンス付きコードブロックで返すこと。解説文は不要です。
@@ -61,8 +88,15 @@ targets は多くても3件まで。1つの PR が4つ以上の機能に跨る�
   "reason": "...",
   "issueKeys": ["PROJ-123"],
   "targets": [
-    { "docId": null, "newDocId": "example-feature", "title": "機能名", "why": "..." }
-  ]
+    {
+      "docId": null,
+      "newDocId": "example-feature",
+      "title": "機能名",
+      "why": "...",
+      "files": ["app/routes/example.ts", "app/models/example.ts"]
+    }
+  ],
+  "unclassified": { "files": ["ci/workflow.yml"], "note": "CI 設定のみで仕様に影響しない" }
 }
 \`\`\``;
 
@@ -88,9 +122,8 @@ export async function classifyPullRequest(
           })
           .join("\n");
 
-  const fileList = pr.changedFiles
-    .map((f) => `${f.status}\t${f.filename} (+${f.additions}/-${f.deletions})`)
-    .join("\n");
+  // 大規模 PR では平らに並べても構造が見えないので、ディレクトリごとにまとめる
+  const fileList = formatChangedFiles(pr.changedFiles);
 
   const prompt = [
     `## 既存の機能ドキュメント一覧`,

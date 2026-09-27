@@ -333,3 +333,68 @@ test("PR 解析の読了率の意味は変えていない（空の変更ファ�
   assert.equal(result.coverageKind, "changed-files");
   assert.equal(result.readCoverage, 1);
 });
+
+// --- 大規模 PR の読了率（71ファイルの PR で 0.11 になった件） ---
+
+test("この機能に割り当てられたファイルで読了率を測る", () => {
+  const repoPath = fixtureRepo();
+  // 71ファイルの PR のうち、この機能に関係するのは 2 件だけ、という状況
+  const changedFiles = [
+    "src/a.ts",
+    "src/b.ts",
+    ...Array.from({ length: 69 }, (_, i) => `other/f${i}.ts`),
+  ];
+
+  const wide = computeConfidence({
+    body: body(),
+    repoPath,
+    currentRepo: "a/b",
+    changedFiles,
+    filesRead: [join(repoPath, "src/a.ts"), join(repoPath, "src/b.ts")],
+    selfReported: 0.8,
+  });
+  const focused = computeConfidence({
+    body: body(),
+    repoPath,
+    currentRepo: "a/b",
+    changedFiles,
+    featureFiles: ["src/a.ts", "src/b.ts"],
+    filesRead: [join(repoPath, "src/a.ts"), join(repoPath, "src/b.ts")],
+    selfReported: 0.8,
+  });
+
+  assert.ok(wide.readCoverage < 0.05, `全変更ファイルで測ると低く出る: ${wide.readCoverage}`);
+  assert.equal(focused.readCoverage, 1, "この機能のファイルは全部読んでいる");
+  assert.equal(focused.coverageKind, "feature-files");
+  assert.equal(wide.coverageKind, "changed-files");
+});
+
+// 割り当てられたファイルを読み落としていれば、ちゃんと下がること
+test("この機能のファイルを読み落とせば下がる", () => {
+  const repoPath = fixtureRepo();
+  const result = computeConfidence({
+    body: body(),
+    repoPath,
+    currentRepo: "a/b",
+    changedFiles: ["src/a.ts", "src/b.ts"],
+    featureFiles: ["src/a.ts", "src/b.ts"],
+    filesRead: [join(repoPath, "src/a.ts")],
+    selfReported: 0.8,
+  });
+  assert.equal(result.readCoverage, 0.5);
+});
+
+test("割り当てが無ければ従来どおり全変更ファイルで測る", () => {
+  const repoPath = fixtureRepo();
+  const result = computeConfidence({
+    body: body(),
+    repoPath,
+    currentRepo: "a/b",
+    changedFiles: ["src/a.ts", "src/b.ts"],
+    featureFiles: [],
+    filesRead: [join(repoPath, "src/a.ts")],
+    selfReported: 0.8,
+  });
+  assert.equal(result.coverageKind, "changed-files");
+  assert.equal(result.readCoverage, 0.5);
+});

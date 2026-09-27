@@ -160,7 +160,7 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-export type CoverageKind = "changed-files" | "cited-files";
+export type CoverageKind = "changed-files" | "feature-files" | "cited-files";
 
 /** エージェントが読んだファイルパスを、リポジトリルートからの相対パスに揃える */
 function normalizeRead(filesRead: string[], repoPath: string): Set<string> {
@@ -221,6 +221,15 @@ export interface ConfidenceInput {
    * 空配列は「PR はあるが変更ファイルが取れなかった」を意味し、読了率は満点になる。
    */
   changedFiles: string[] | null;
+  /**
+   * 変更ファイルのうち、**この機能に割り当てられた**もの（分類が決める）。
+   *
+   * 大規模 PR で読了率を全変更ファイルに対して測ると、他の機能のファイルを
+   * 読まなかったことで確度が下がる（71ファイルの PR で 0.11 になった）。
+   * この機能のドキュメントなのだから、測るべきは「この機能のファイルを読んだか」。
+   * 空・未指定なら従来どおり全変更ファイルで測る。
+   */
+  featureFiles?: string[] | null;
   /** エージェントが実際に開いたファイル */
   filesRead: string[];
   /** モデルの自己申告値 */
@@ -235,17 +244,19 @@ export interface ConfidenceInput {
  */
 export function computeConfidence(input: ConfidenceInput): ConfidenceBreakdown {
   const { body, repoPath, currentRepo, changedFiles, filesRead, selfReported } = input;
+  const featureFiles = input.featureFiles?.length ? input.featureFiles : null;
 
   const check = checkSources(body, repoPath, currentRepo);
   const sourceValidity = check.total === 0 ? 0 : check.valid / check.total;
 
   // PR が無い解析（バックフィル）は変更ファイルを持たない。
   // 同じ指標を使い回すと満点が無条件で入るので、測る対象そのものを切り替える。
-  const coverageKind: CoverageKind = changedFiles === null ? "cited-files" : "changed-files";
+  const coverageKind: CoverageKind =
+    changedFiles === null ? "cited-files" : featureFiles ? "feature-files" : "changed-files";
   const readCoverage =
     changedFiles === null
       ? computeCitedFileCoverage(body, currentRepo, filesRead, repoPath)
-      : computeReadCoverage(filesRead, changedFiles, repoPath);
+      : computeReadCoverage(filesRead, featureFiles ?? changedFiles, repoPath);
 
   // 仕様1項目あたり出典2件を満点とする
   const totalSources = collectSources(body).filter((s) => isSameRepo(s, currentRepo)).length;

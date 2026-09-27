@@ -256,6 +256,15 @@ export function backfillSource(repo: string): ChangeSource {
 }
 
 /** PR 解析の入力 */
+/** PR で変更されたファイル1件 */
+export interface ChangedFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patch: string | null;
+}
+
 export interface PullRequestInput {
   repo: string;
   number: number;
@@ -264,13 +273,7 @@ export interface PullRequestInput {
   author: string;
   branch: string;
   mergedAt: string | null;
-  changedFiles: Array<{
-    filename: string;
-    status: string;
-    additions: number;
-    deletions: number;
-    patch: string | null;
-  }>;
+  changedFiles: ChangedFile[];
 }
 
 export interface FeatureDocIndexEntry {
