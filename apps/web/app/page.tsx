@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { DocStore } from "@spec-bridge/core";
+import { currentSession } from "@/lib/auth";
 import { docsPath } from "@/lib/config";
 import { buildSampleQuestions } from "@/lib/samples";
 import { AskPanel } from "./ask-panel";
@@ -13,6 +15,9 @@ const STATUS_LABEL = {
 } as const;
 
 export default async function Page() {
+  // 機能ドキュメントには内部のファイルパスと仕様が載る。署名を検証してから描く
+  if (!(await currentSession())) redirect("/login");
+
   let docs: Awaited<ReturnType<DocStore["list"]>> = [];
   let error: string | null = null;
 

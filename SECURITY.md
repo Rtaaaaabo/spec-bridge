@@ -54,6 +54,19 @@ intentional — they are the citations.
 If your docs repository is public, your internal structure is readable by anyone. **Keep the docs
 repository private.**
 
+### Signing in to the web UI
+
+Generated documents contain internal file paths, line numbers, and specifications, and `/api/ask` calls an
+LLM, so the UI and its APIs require sign-in.
+
+- The session is a **signed cookie** (HttpOnly, SameSite=Lax, 12 hours by default) carrying only the
+  GitHub user identity — **the access token is never stored**
+- With `SPEC_BRIDGE_SESSION_SECRET` unset, **nobody** gets in (it does not fail open)
+- **`middleware.ts` is not the authentication.** The edge runtime cannot read the repository-root `.env`,
+  so it cannot hold the signing key; it only checks whether a cookie is present and redirects to the sign-in
+  page. The real check is `currentSession()` (`apps/web/lib/auth.ts`) on the server.
+  **Every new page and API route must go through it.**
+
 ### The docs repository and the pull request loop
 
 Merging a generated pull request fires a webhook that could analyze the docs repository itself and open

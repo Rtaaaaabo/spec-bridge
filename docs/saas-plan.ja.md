@@ -1,6 +1,7 @@
 # SaaS 化の設計メモ
 
-**これは進行中の設計記録です。** 実装済みは 1（認証）・3（ジョブ）・4（提出）で、残りは 2（画面）です。
+**これは進行中の設計記録です。** 1（認証）・3（ジョブ）・4（提出）は実装済み、2（画面）はログインとインストール一覧まで。
+残っているのはリポジトリ選択とラン一覧です。
 確定した設計と、その選択理由（あとから読んで判断を蒸し返さないための根拠）を置きます。
 
 いまの CLI / webhook の使い方は [github-app-setup.ja.md](github-app-setup.ja.md) を参照してください。
@@ -53,20 +54,29 @@ App 運用では docs リポジトリにも App を入れる必要がありま�
 `isDocsRepoEvent` のガード1つに依存します（[SECURITY.ja.md](../SECURITY.ja.md) 参照）。
 マルチテナントにするときは、この比較をグローバルな1リポジトリではなく**テナントごとの設定**に変えます。
 
-## 2. 画面：インストールとリポジトリ選択（未着手）
+## 2. 画面：ログインとインストール（ログインまで実装済み）
 
-`apps/web` には認証が一切ありません（middleware なし、`/api/ask` は誰でも叩ける）。
-「テナント分離が要る」の前に「認証がまだ無い」段階です。
+`apps/web` には認証が一切なく、`/api/ask` を誰でも叩けた。まずそこを塞いだ。
 
-**GitHub App の user-to-server OAuth でログインも兼ねる**のが一番安い。
-ログインの主体とインストールの主体が一致するので、テナントの解決が自明になります。
+**GitHub App の user-to-server OAuth でログインも兼ねる。** ログインの主体とインストールの主体が
+一致するので、テナントの解決が自明になる（別の OAuth App を用意すると対応表を自前で持つことになる）。
 
-- `GET /api/github/login` → App の OAuth へ（`state` は Cookie と突き合わせる）
-- `GET /api/github/callback` → `installation_id` / `setup_action` を受け、`GET /installation/repositories` で一覧
-- リポジトリ選択の画面 → 選択を保存
-- docs リポジトリは同じ画面で「既存を選ぶ / 新規作成」。空リポジトリの初回コミットは `resolveBaseSha` が面倒を見る
+実装したもの:
 
-テーブルは最小5つ: `tenants` / `installations` / `repos` / `docs_targets` / `jobs`。
+- `GET /api/github/login` → 認可画面へ（`state` は Cookie と突き合わせる）
+- `GET /api/github/callback` → `code` を交換し、**署名付きセッション Cookie** を発行
+- `/login`、`/installations`（App が読めるリポジトリの一覧）、ログアウト
+- **アクセストークンは保存しない。** Cookie が漏れても、そのままリポジトリを触れる鍵にはしない
+- **`middleware.ts` は認証ではない。** Edge ランタイムからはルートの `.env` を読めず署名鍵を持てないので、
+  Cookie の有無だけを見て振り分ける。本当の検証はサーバー側の `currentSession()`。
+  この区別を曖昧にすると「middleware があるから安全」と誤解して穴が空く
+
+残り:
+
+- **リポジトリ選択と docs リポジトリの指定。** いまは `SPEC_BRIDGE_DOCS_REPO` 1本（単一テナント）。
+  ここを画面から持つには、テナント表（`tenants` / `installations` / `docs_targets`）が要る
+- **ラン一覧。** `jobs` 表を `runId` で束ねて、進み具合・費用・PR を出す。画面から着手もできるようにする
+- 利用者ごとに見える範囲を変える（いまは App 全体のインストールを見せている）
 
 ## 3. ジョブ：backfill を分割して実行する（土台は実装済み）
 
