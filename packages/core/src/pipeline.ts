@@ -1,5 +1,6 @@
 import { analyzeFeature } from "./analyze.ts";
 import { classifyPullRequest, type ClassifyResult } from "./classify.ts";
+import { runWithConcurrency } from "./concurrency.ts";
 import {
   estimateOptionsFromEnv,
   estimateRun,
@@ -33,6 +34,14 @@ export interface RunOptions {
    * 予算を上げて再実行すれば続きから拾える。
    */
   budgetUsd?: number;
+  /**
+   * 機能の解析を何件まで同時に走らせるか（既定 1）。
+   *
+   * 機能どうしは独立で、1件あたり4〜5分かかる。**並列にしても費用は変わらず、
+   * 実時間だけ縮む**（6機能で29分 → 2並列なら15分程度）。
+   * ただし LLM の利用上限に当たりやすくなるので、既定は直列のまま。
+   */
+  concurrency?: number;
   log?: (line: string) => void;
 }
 
@@ -125,6 +134,13 @@ export async function runPipeline(
   const skippedTargets: SkippedTarget[] = [];
   const source = sourceFromPullRequest(pr);
 
+  const concurrency = Math.max(1, Math.floor(options.concurrency ?? 1));
+  if (concurrency > 1) {
+    log(`▸ ${concurrency} 件を同時に解析します（費用は変わらず、実時間だけ縮みます）`);
+  }
+
+  // 解析できる対象だけを先に選り分ける。ID が不正なものは走らせる前に落とす
+  const analyzable: Array<{ target: (typeof classification.targets)[number]; id: string }> = [];
   for (const target of classification.targets) {
     const id = target.docId ?? target.newDocId;
     if (!id) {
@@ -136,62 +152,81 @@ export async function runPipeline(
       failures.push({ id, error: `ID に使えない文字が含まれています: ${JSON.stringify(id)}` });
       continue;
     }
-
-    // 予算は着手前に見る。走らせてから超過に気づいても、その1件の費用はもう出ている。
-    // 分類は影響の大きい順に並べているので、落ちるのは末尾から
-    if (options.budgetUsd !== undefined && tally.summary().costUsd >= options.budgetUsd) {
-      log(
-        `⏭ 「${target.title}」(${id}) は予算に達したため書きません` +
-          `（$${tally.summary().costUsd.toFixed(2)} / 上限 $${options.budgetUsd}）`,
-      );
-      skippedTargets.push({ id, title: target.title });
+    // 同じ ID が2回来ると、並列だと同じファイルに同時に書くことになる
+    // （直列でも後勝ちで変更履歴が消える）。分類の出力なので、起こりうる
+    if (analyzable.some((entry) => entry.id === id)) {
+      log(`  ⚠ 同じ機能が2回挙がっています。2件目は無視します: ${id}`);
       continue;
     }
+    analyzable.push({ target, id });
+  }
 
-    log(`▸ 「${target.title}」(${id}) を解析中…`);
-    try {
-      const existing = target.docId ? await store.get(target.docId) : null;
-      const result = await analyzeFeature(
-        { kind: "pull-request", pr },
-        existing,
-        { id, title: target.title, why: target.why, files: target.files },
-        {
-          repoPath: options.repoPath,
-          allowBash: options.allowBash,
-          onProgress: log,
-          onUsage: tally.add,
-        },
-      );
+  const pool = await runWithConcurrency(
+    analyzable,
+    async ({ target, id }) => {
+      // 並列だとログが混ざるので、どの機能の行かを示す
+      const line = (text: string) => log(concurrency > 1 ? `[${id}] ${text}` : text);
+      line(`▸ 「${target.title}」(${id}) を解析中…`);
+      try {
+        const existing = target.docId ? await store.get(target.docId) : null;
+        const result = await analyzeFeature(
+          { kind: "pull-request", pr },
+          existing,
+          { id, title: target.title, why: target.why, files: target.files },
+          {
+            repoPath: options.repoPath,
+            allowBash: options.allowBash,
+            onProgress: line,
+            onUsage: tally.add,
+          },
+        );
 
-      const { doc, warnings } = mergeAnalysis(
-        existing,
-        result.output,
-        source,
-        id,
-        classification.issueKeys,
-      );
-      const path = await store.save(doc);
-      log(`  ✓ 書き出し: ${path} (確度 ${doc.meta.confidence.toFixed(2)})`);
+        const { doc, warnings } = mergeAnalysis(
+          existing,
+          result.output,
+          source,
+          id,
+          classification.issueKeys,
+        );
+        // 保存は直列にしたいところだが、機能ごとにファイルが分かれるので競合しない
+        const path = await store.save(doc);
+        line(`  ✓ 書き出し: ${path} (確度 ${doc.meta.confidence.toFixed(2)})`);
 
-      updated.push({
-        id,
-        path,
-        confidence: doc.meta.confidence,
-        breakdown: result.confidence,
-        warnings: [
-          ...warnings,
-          ...result.warnings.map((detail) => ({
-            kind: "invalid-source" as const,
-            detail,
-          })),
-        ],
-        openQuestions: doc.body.openQuestions,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log(`  ✗ 失敗: ${message}`);
-      failures.push({ id, error: message });
-    }
+        updated.push({
+          id,
+          path,
+          confidence: doc.meta.confidence,
+          breakdown: result.confidence,
+          warnings: [
+            ...warnings,
+            ...result.warnings.map((detail) => ({
+              kind: "invalid-source" as const,
+              detail,
+            })),
+          ],
+          openQuestions: doc.body.openQuestions,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        line(`  ✗ 失敗: ${message}`);
+        failures.push({ id, error: message });
+      }
+    },
+    {
+      limit: concurrency,
+      // 予算は着手前に見る。並列だと、同時に始まった件数ぶんは上限を超えうる
+      ...(options.budgetUsd !== undefined
+        ? { shouldStop: () => tally.summary().costUsd >= (options.budgetUsd as number) }
+        : {}),
+    },
+  );
+
+  for (const { target, id } of pool.notStarted) {
+    log(
+      `⏭ 「${target.title}」(${id}) は予算に達したため書きません` +
+        `（$${tally.summary().costUsd.toFixed(2)} / 上限 $${options.budgetUsd}）`,
+    );
+    skippedTargets.push({ id, title: target.title });
   }
 
   if (updated.length > 0) {

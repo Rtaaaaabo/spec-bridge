@@ -110,6 +110,9 @@ PORT=3939
 # 上限に達した機能は書かず、docs リポジトリの PR 本文にその旨を明記する
 SPEC_BRIDGE_PR_BUDGET_USD=10
 
+# 機能の解析を同時に走らせる数（既定 1）。費用は変わらず実時間だけ縮む
+SPEC_BRIDGE_ANALYZE_CONCURRENCY=1
+
 # 認証（推奨）: App ID + 秘密鍵を installation access token に交換する
 GITHUB_APP_ID=<手順2で控えた App ID>
 GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/your-app.private-key.pem

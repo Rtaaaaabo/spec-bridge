@@ -41,6 +41,8 @@ export interface HandlerConfig {
    * **上限が無いと1回のマージでいくらでも使える。**
    */
   budgetUsd?: number;
+  /** 機能の解析を同時に走らせる数（既定 1） */
+  concurrency?: number;
   /**
    * GitHub の認証。App の installation トークンか PAT のどちらか（`resolveGitHubAuth()`）。
    *
@@ -144,6 +146,7 @@ export async function handleMergedPullRequest(
       repoPath: checkout.path,
       docsPath: docsDir,
       budgetUsd: config.budgetUsd,
+      ...(config.concurrency !== undefined ? { concurrency: config.concurrency } : {}),
       log,
     });
     log(`  ${formatUsageSummary(result.usage)}`);

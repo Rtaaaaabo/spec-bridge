@@ -98,6 +98,7 @@ if (config.inlineWorker) {
     auth,
     docsRepo: config.docsRepo,
     prBudgetUsd: config.prBudgetUsd,
+    analyzeConcurrency: config.analyzeConcurrency,
   });
   void worker.start();
   console.log("インラインのワーカーを起動しました（SPEC_BRIDGE_INLINE_WORKER=1）");

@@ -78,6 +78,7 @@ analyze — マージされた PR ひとつを反映する
   --docs   <path>   機能ドキュメントの出力先ディレクトリ
   --budget <usd>    この PR で使ってよい額。超えたら残りの機能を書かない
   --estimate        分類だけ行い、費用と時間の見積もりを出して終わる（約 $0.3）
+  --concurrency <n> 機能の解析を同時に走らせる数（既定 1）。費用は変わらず実時間だけ縮む
   --force           仕様に影響しないと判定されても解析する
   --token   <token> GitHub トークン（省略時は GITHUB_TOKEN）
 
@@ -261,6 +262,7 @@ interface CliOptions {
   repoName?: string;
   docsRepo?: string;
   budget?: string;
+  concurrency?: string;
   estimateOnly: boolean;
   force: boolean;
   allowBash: boolean;
@@ -277,6 +279,18 @@ async function runAnalyzeCommand(
     return 1;
   }
 
+  // 数値の検証は、ネットワークにも LLM にも触る前に済ませる
+  const budgetUsd = options.budget ? Number(options.budget) : undefined;
+  if (budgetUsd !== undefined && (!Number.isFinite(budgetUsd) || budgetUsd <= 0)) {
+    console.error(`エラー: --budget は正の数で指定してください: "${options.budget}"`);
+    return 1;
+  }
+  const concurrency = options.concurrency ? Number(options.concurrency) : undefined;
+  if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) {
+    console.error(`エラー: --concurrency は1以上の整数で指定してください: "${options.concurrency}"`);
+    return 1;
+  }
+
   const repoPath = await assertDirectory(options.repo, "--repo");
   const docsPath = expandHome(options.docs);
 
@@ -286,12 +300,6 @@ async function runAnalyzeCommand(
   const octokit = options.token ? createOctokit(options.token) : createOctokitFromEnv();
   const pr = await fetchPullRequest(ref, octokit);
   log(`  ${pr.title}（${pr.changedFiles.length} ファイル変更）`);
-
-  const budgetUsd = options.budget ? Number(options.budget) : undefined;
-  if (budgetUsd !== undefined && (!Number.isFinite(budgetUsd) || budgetUsd <= 0)) {
-    console.error(`エラー: --budget は正の数で指定してください: "${options.budget}"`);
-    return 1;
-  }
 
   // 分類だけ流して、いくらかかるかを先に知る。高くつく PR は走らせる前に分かる
   if (options.estimateOnly) {
@@ -304,6 +312,7 @@ async function runAnalyzeCommand(
     force: options.force,
     allowBash: options.allowBash,
     ...(budgetUsd !== undefined ? { budgetUsd } : {}),
+    ...(concurrency !== undefined ? { concurrency } : {}),
     log,
   });
 
@@ -627,6 +636,7 @@ async function main(): Promise<number> {
       "repo-name": { type: "string" },
       "docs-repo": { type: "string" },
       budget: { type: "string" },
+      concurrency: { type: "string" },
       estimate: { type: "boolean", default: false },
       clone: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
@@ -654,6 +664,7 @@ async function main(): Promise<number> {
     repoName: values["repo-name"],
     docsRepo: values["docs-repo"],
     budget: values.budget,
+    concurrency: values.concurrency,
     estimateOnly: values.estimate,
     force: values.force,
     allowBash: values["allow-bash"],

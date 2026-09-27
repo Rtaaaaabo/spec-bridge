@@ -69,6 +69,8 @@ export interface WebhookConfig {
   port: number;
   /** PR 1本あたりの上限（USD） */
   prBudgetUsd: number;
+  /** 機能の解析を同時に走らせる数。費用は変わらず実時間だけ縮む */
+  analyzeConcurrency: number;
   databaseUrl: string | undefined;
   /** 受信プロセスの中でワーカーも回す（ローカル用。本番はプロセスを分ける） */
   inlineWorker: boolean;
@@ -80,6 +82,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): WebhookConfig 
     docsRepo: env.SPEC_BRIDGE_DOCS_REPO ?? "",
     port: Number(env.PORT ?? 3939),
     prBudgetUsd: Number(env.SPEC_BRIDGE_PR_BUDGET_USD ?? DEFAULT_PR_BUDGET_USD),
+    analyzeConcurrency: Math.max(1, Number(env.SPEC_BRIDGE_ANALYZE_CONCURRENCY ?? 1)),
     databaseUrl: env.DATABASE_URL,
     inlineWorker: env.SPEC_BRIDGE_INLINE_WORKER === "1",
   };
