@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
-import { oauthConfig, sessionSecret } from "@/lib/config";
+import { ALLOWLIST_HINT, isAllowedLogin } from "@/lib/access";
+import { allowedLogins, baseUrl, oauthConfig, sessionSecret } from "@/lib/config";
 import { exchangeCode, fetchViewer, isValidState } from "@/lib/oauth";
 import { newSession, signSession, SESSION_COOKIE, SESSION_TTL_MS, STATE_COOKIE } from "@/lib/session";
 
@@ -23,9 +24,21 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const token = await exchangeCode(config, code);
     const viewer = await fetchViewer(token);
+
+    // OAuth を通っただけでは「GitHub アカウントを持っている」しか分からない
+    if (!isAllowedLogin(viewer.login, allowedLogins())) {
+      console.warn(`[oauth] 許可されていないログインを拒否しました: ${viewer.login}`);
+      return Response.json(
+        { error: `${viewer.login} はログインを許可されていません。${ALLOWLIST_HINT}` },
+        { status: 403 },
+      );
+    }
+
     const session = await signSession(newSession(viewer), sessionSecret());
 
-    const secure = url.protocol === "https:" ? " Secure;" : "";
+    // プロキシの裏では request.url が http で届くので、公開 URL の設定から決める
+    // （`url.protocol` を見ていたため、HTTPS なのに Secure が付かなかった）
+    const secure = baseUrl().startsWith("https:") ? " Secure;" : "";
     return new Response(null, {
       status: 302,
       headers: [

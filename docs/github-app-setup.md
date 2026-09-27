@@ -190,14 +190,17 @@ user-to-server OAuth, so no second app is needed.
    SPEC_BRIDGE_SESSION_SECRET=<output of openssl rand -hex 32>
    GITHUB_APP_CLIENT_ID=<client id>
    GITHUB_APP_CLIENT_SECRET=<client secret>
-   # if the UI is served somewhere other than localhost
+   # GitHub accounts allowed to sign in (comma separated). Unset means nobody
+   SPEC_BRIDGE_ALLOWED_LOGINS=<your GitHub username>
+   # if the UI is served somewhere other than localhost (https adds Secure to the cookie)
    # SPEC_BRIDGE_BASE_URL=https://specs.example.com
    ```
 
 4. Run `pnpm web` and open http://localhost:3000/ (you land on `/login` when signed out)
 
-> ⚠️ With `SPEC_BRIDGE_SESSION_SECRET` unset, the UI lets **nobody** in rather than everybody: a session
-> that cannot be verified is a session anyone could forge.
+> ⚠️ With `SPEC_BRIDGE_SESSION_SECRET` or `SPEC_BRIDGE_ALLOWED_LOGINS` unset, the UI lets **nobody** in
+> rather than everybody: a session that cannot be verified is a session anyone could forge, and an empty
+> allowlist is safer than an open door.
 
 The session cookie carries only the GitHub user identity — **the access token is never stored**.
 
