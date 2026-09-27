@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { readAllowedLogins } from "./access.ts";
 import { readOAuthConfig } from "./oauth.ts";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -48,6 +49,12 @@ export function sessionSecret(): string {
 export function oauthConfig(): ReturnType<typeof readOAuthConfig> {
   ensureEnv();
   return readOAuthConfig(process.env);
+}
+
+/** ログインを許可する GitHub ユーザー。空なら誰も通さない */
+export function allowedLogins(): string[] {
+  ensureEnv();
+  return readAllowedLogins(process.env);
 }
 
 /** 画面の公開 URL。コールバックの組み立てと、手順の表示に使う */

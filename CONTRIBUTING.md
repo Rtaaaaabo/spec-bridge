@@ -107,6 +107,10 @@ the repository-root `.env`, so it cannot hold the signing key. **The authenticat
 Call it at the top of every new page and route handler. One route that forgets is one route that serves
 feature documents to anyone.
 
+`currentSession()` verifies the signature **and** consults the allowlist
+(`SPEC_BRIDGE_ALLOWED_LOGINS`) on every request. Sessions last 12 hours, so checking the list only at
+sign-in would let a removed account stay in for the rest of the day.
+
 ## Testing policy
 
 Tests cover the parts that **don't depend on model output**: deterministic Markdown rendering, merge

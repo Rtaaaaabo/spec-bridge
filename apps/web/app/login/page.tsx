@@ -1,4 +1,5 @@
-import { baseUrl, oauthConfig } from "@/lib/config";
+import { ALLOWLIST_HINT } from "@/lib/access";
+import { allowedLogins, baseUrl, oauthConfig } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,18 @@ export default function LoginPage() {
       <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
         機能仕様ドキュメントには内部のファイルパスと仕様が含まれます。閲覧にはログインが必要です。
       </p>
+
+      {config && allowedLogins().length === 0 && (
+        <div
+          className="mt-8 rounded-lg border p-4 text-sm"
+          style={{ borderColor: "var(--border)", background: "var(--panel)" }}
+        >
+          <p className="font-medium">ログインを許可された人がいません</p>
+          <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
+            {ALLOWLIST_HINT}
+          </p>
+        </div>
+      )}
 
       {config ? (
         <a

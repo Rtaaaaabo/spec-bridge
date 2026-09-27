@@ -59,8 +59,14 @@ repository private.**
 Generated documents contain internal file paths, line numbers, and specifications, and `/api/ask` calls an
 LLM, so the UI and its APIs require sign-in.
 
+- **Who may sign in is listed explicitly in `SPEC_BRIDGE_ALLOWED_LOGINS`; unset means nobody gets in.**
+  Completing OAuth only proves someone has a GitHub account. The UI exposes internal file paths and
+  specifications, and `/runs` can start an analysis — that is, **spend money** — so only listed accounts
+  are allowed. The list is consulted **on every request**, so removing someone ends their session at once
 - The session is a **signed cookie** (HttpOnly, SameSite=Lax, 12 hours by default) carrying only the
   GitHub user identity — **the access token is never stored**
+- The cookie's `Secure` flag is decided from `SPEC_BRIDGE_BASE_URL`: behind a proxy the request arrives
+  over http, so it cannot be inferred from the request itself
 - With `SPEC_BRIDGE_SESSION_SECRET` unset, **nobody** gets in (it does not fail open)
 - **`proxy.ts` (called middleware before Next 16) is not the authentication.** The edge runtime cannot read the repository-root `.env`,
   so it cannot hold the signing key; it only checks whether a cookie is present and redirects to the sign-in

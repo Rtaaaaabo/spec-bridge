@@ -188,14 +188,17 @@ GitHub App の user-to-server OAuth を使うので、新しい App は要りま
    SPEC_BRIDGE_SESSION_SECRET=$(openssl rand -hex 32 の結果)
    GITHUB_APP_CLIENT_ID=<Client ID>
    GITHUB_APP_CLIENT_SECRET=<client secret>
-   # 公開 URL が localhost 以外なら
+   # ログインを許可する GitHub ユーザー（カンマ区切り）。未設定なら誰も通さない
+   SPEC_BRIDGE_ALLOWED_LOGINS=<あなたの GitHub ユーザー名>
+   # 公開 URL が localhost 以外なら（https なら Cookie に Secure が付く）
    # SPEC_BRIDGE_BASE_URL=https://specs.example.com
    ```
 
 4. `pnpm web` で起動し、http://localhost:3000/ を開く（未ログインなら `/login` に飛びます）
 
-> ⚠️ `SPEC_BRIDGE_SESSION_SECRET` が未設定だと、画面は**誰も通しません**（素通しにはなりません）。
-> 署名を検証できない状態で通すと、Cookie を自作した人が入れてしまうためです。
+> ⚠️ `SPEC_BRIDGE_SESSION_SECRET` か `SPEC_BRIDGE_ALLOWED_LOGINS` が未設定だと、
+> 画面は**誰も通しません**（素通しにはなりません）。
+> 署名を検証できない状態や、許可した人が誰もいない状態で通すほうが危ないためです。
 
 セッション Cookie に入るのは GitHub のユーザー識別子だけで、**アクセストークンは保存しません**。
 
