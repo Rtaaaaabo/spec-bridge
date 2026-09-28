@@ -113,7 +113,7 @@ fly secrets set --app spec-bridge \
 ## 4. デプロイする
 
 ```bash
-fly secrets list           # 名前とダイジェストだけ出る（値は出ない）。DATABASE_URL を含めて9個
+fly secrets list           # 名前とダイジェストだけ出る（値は出ない）。DATABASE_URL を含めて10個
 fly deploy --remote-only   # 手元の Docker を使わず、Fly 側でイメージを作る
 fly status                 # app と worker が動いているか
 fly logs -a spec-bridge
