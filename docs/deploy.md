@@ -23,6 +23,16 @@ worker picks up the expensive part. Signature verification and enqueueing are sh
 **The UI is not on Vercel** because `/api/ask` uses the Agent SDK, which spawns the Claude Code binary —
 that does not work on serverless.
 
+## 0. Prerequisites
+
+```bash
+brew install flyctl
+fly auth login
+```
+
+**This needs billing enabled on Fly** — the free allowance alone will not keep it running. Expect roughly
+$10–20/month for the app (1GB) and worker (2GB).
+
 ## 1. Postgres
 
 Fly Postgres or Neon, whichever you prefer; a connection string is all that is needed. The tables (`jobs`,
@@ -33,6 +43,10 @@ fly postgres create --name spec-bridge-db --region nrt
 fly postgres attach spec-bridge-db --app spec-bridge   # sets DATABASE_URL
 ```
 
+> **Fly's Postgres commands change from time to time.** If the above does not work, check
+> `fly postgres --help` / `fly mpg --help`. **Any external Postgres (Neon, for instance) is fine** — put
+> its `DATABASE_URL` in the secrets. Nothing here depends on Fly Postgres specifically.
+
 **Losing this database is recoverable.** The documents live in the docs repository on GitHub; this holds
 in-flight jobs and per-installation settings only.
 
@@ -40,9 +54,15 @@ in-flight jobs and per-installation settings only.
 
 ```bash
 fly launch --no-deploy --copy-config --name spec-bridge --region nrt
+fly config validate    # check fly.toml against your CLI's schema
 ```
 
-The `fly.toml` in the repository works as is — change the `app` name to yours.
+**App names are globally unique on Fly.** If `spec-bridge` is taken, pick another and keep the hostname
+consistent in **all three places**: `app` in `fly.toml`, `SPEC_BRIDGE_BASE_URL`, and the GitHub App URLs in
+step 5. A mismatch shows up as a webhook that never arrives, a sign-in that never returns, or a cookie
+without `Secure`.
+
+`fly launch` may offer to provision Postgres or Redis; decline if you did step 1 already.
 
 ## 3. Secrets
 
@@ -67,10 +87,16 @@ fly secrets set \
 ## 4. Deploy
 
 ```bash
-fly deploy
+fly deploy --remote-only   # build on Fly's builders instead of local Docker
 fly status
 fly logs -a spec-bridge
 ```
+
+`--remote-only` means you never need Docker Desktop running. To check the build locally first, run
+`docker build .` once.
+
+> ⚠️ **Deploying before setting secrets makes the worker fail on startup** (no `DATABASE_URL`; the log
+> says so). Do step 3 first.
 
 The worker logs which credential it uses, the default docs repository, the per-PR budget, and the
 concurrency.
@@ -94,6 +120,22 @@ curl -s -o /dev/null -w '%{http_code}\n' https://spec-bridge.fly.dev/   # 307 to
 
 Then merge a small pull request. `fly logs` should show the delivery being enqueued and the worker picking
 it up; `/runs` shows progress and cost.
+
+## When something is wrong
+
+| Symptom | Cause |
+| --- | --- |
+| Worker exits right after starting | No `DATABASE_URL`. Check `fly secrets list` (values are not shown) |
+| UI returns 500 | `SPEC_BRIDGE_SESSION_SECRET` or `DATABASE_URL` missing; `fly logs` says which |
+| Sign-in bounces back to `/login` | Your account is not in `SPEC_BRIDGE_ALLOWED_LOGINS` |
+| "state が一致しません" after authorizing | The App's Callback URL and `SPEC_BRIDGE_BASE_URL` are on different hosts |
+| Webhook returns 401 | `GITHUB_WEBHOOK_SECRET` differs from the App's |
+| 202 but nothing happens | The worker isn't running. Check `fly status` and `/runs` |
+| Analysis fails with "提出先が設定されていません" | Set the docs repository at `/installations`, or set `SPEC_BRIDGE_DOCS_REPO` |
+| `fly config validate` errors | Your CLI's schema differs; fix the field it names |
+
+On startup `fly logs` prints the credential type, the default docs repository, the per-PR budget, and the
+concurrency — **the fastest way to confirm your settings took effect**.
 
 ## Operating it
 
