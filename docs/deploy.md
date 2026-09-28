@@ -110,6 +110,7 @@ fly secrets set --app spec-bridge \
 ## 4. Deploy
 
 ```bash
+fly secrets list           # names and digests only. Ten entries, counting DATABASE_URL
 fly deploy --remote-only   # build on Fly's builders instead of local Docker
 fly status
 fly logs -a spec-bridge
