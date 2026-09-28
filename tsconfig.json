@@ -22,7 +22,8 @@
       "@spec-bridge/jobs": ["packages/jobs/src/index.ts"],
       "@spec-bridge/jobs/*": ["packages/jobs/src/*"],
       "@spec-bridge/backfill": ["packages/backfill/src/index.ts"],
-      "@spec-bridge/tenants": ["packages/tenants/src/index.ts"]
+      "@spec-bridge/tenants": ["packages/tenants/src/index.ts"],
+      "@spec-bridge/ingest": ["packages/ingest/src/index.ts"]
     }
   },
   "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts"]

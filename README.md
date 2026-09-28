@@ -375,7 +375,8 @@ Installations without a setting fall back to `SPEC_BRIDGE_DOCS_REPO`, so a singl
 the environment variable alone.
 
 Setup (creating the GitHub App, permissions, tunneling to localhost) is documented in
-[docs/github-app-setup.md](docs/github-app-setup.md). API calls authenticate with App installation access
+[docs/github-app-setup.md](docs/github-app-setup.md); running it continuously on Fly.io is covered in
+[docs/deploy.md](docs/deploy.md). API calls authenticate with App installation access
 tokens (recommended) or with a PAT.
 
 The design for running this as a service (job splitting, per-tenant credentials, generalized submission)

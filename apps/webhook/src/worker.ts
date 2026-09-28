@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { Worker, type JobStore } from "@spec-bridge/jobs";
 import { resolveDocsRepo, type TenantStore } from "@spec-bridge/tenants";
 import { checkGitHubAuthConfig, resolveGitHubAuth, type GitHubAuth } from "@spec-bridge/github";
-import { ANALYZE_PR, parseAnalyzePayload } from "./analyze-job.ts";
+import { ANALYZE_PR, parseAnalyzePayload } from "@spec-bridge/ingest";
 import { BACKFILL_FEATURE, BACKFILL_FINISH, BACKFILL_SURVEY } from "@spec-bridge/backfill";
 import { featureHandler, finishHandler, surveyHandler } from "./backfill-handlers.ts";
 import { createJobStore, createTenantStore, loadEnv, readConfig } from "./config.ts";

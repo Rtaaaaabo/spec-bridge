@@ -81,3 +81,9 @@ export function fallbackDocsRepo(): string | undefined {
   ensureEnv();
   return process.env.SPEC_BRIDGE_DOCS_REPO?.trim() || undefined;
 }
+
+/** GitHub webhook の署名鍵。**未設定なら全配信を拒否する**（素通しにしない） */
+export function webhookSecret(): string {
+  ensureEnv();
+  return process.env.GITHUB_WEBHOOK_SECRET ?? "";
+}

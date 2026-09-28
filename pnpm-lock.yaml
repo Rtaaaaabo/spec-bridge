@@ -42,6 +42,9 @@ importers:
       '@spec-bridge/github':
         specifier: workspace:*
         version: link:../../packages/github
+      '@spec-bridge/ingest':
+        specifier: workspace:*
+        version: link:../../packages/ingest
       '@spec-bridge/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
@@ -85,6 +88,9 @@ importers:
       '@spec-bridge/github':
         specifier: workspace:*
         version: link:../../packages/github
+      '@spec-bridge/ingest':
+        specifier: workspace:*
+        version: link:../../packages/ingest
       '@spec-bridge/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
@@ -128,6 +134,18 @@ importers:
       octokit:
         specifier: ^5.0.5
         version: 5.0.5
+
+  packages/ingest:
+    dependencies:
+      '@spec-bridge/github':
+        specifier: workspace:*
+        version: link:../github
+      '@spec-bridge/jobs':
+        specifier: workspace:*
+        version: link:../jobs
+      '@spec-bridge/tenants':
+        specifier: workspace:*
+        version: link:../tenants
 
   packages/jobs:
     dependencies:
