@@ -159,6 +159,9 @@ importers:
 
   packages/tenants:
     dependencies:
+      '@spec-bridge/jobs':
+        specifier: workspace:*
+        version: link:../jobs
       pg:
         specifier: ^8.13.1
         version: 8.23.0

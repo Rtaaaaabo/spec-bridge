@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { describeConnectionFailure } from "./connection-error.ts";
 import type { ClaimOptions, JobQuery, JobStore } from "./store.ts";
 import { DEFAULT_MAX_ATTEMPTS, type EnqueueResult, type Job, type JobInput } from "./types.ts";
 
@@ -45,15 +46,25 @@ function toJob(row: JobRow): Job {
 export class PostgresJobStore implements JobStore {
   private readonly pool: pg.Pool;
 
-  constructor(connectionString: string, options: { max?: number } = {}) {
-    this.pool = new pg.Pool({ connectionString, max: options.max ?? 4 });
+  constructor(connectionString: string, options: { max?: number; connectionTimeoutMs?: number } = {}) {
+    this.pool = new pg.Pool({
+      connectionString,
+      max: options.max ?? 4,
+      // 既定（無期限）だと、宛先が起きていないときに黙ってぶら下がる。
+      // 実際に Fly で、DB のマシンが停止していて40秒後に落ちるのを踏んだ
+      connectionTimeoutMillis: options.connectionTimeoutMs ?? 10_000,
+    });
   }
 
   /** 表を作る。マイグレーションの仕組みを増やさず、起動時に流せる形にしておく */
   async migrate(): Promise<void> {
     const here = dirname(fileURLToPath(import.meta.url));
     const sql = await readFile(join(here, "schema.sql"), "utf8");
-    await this.pool.query(sql);
+    try {
+      await this.pool.query(sql);
+    } catch (error) {
+      throw new Error(describeConnectionFailure(error));
+    }
   }
 
   /**

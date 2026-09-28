@@ -155,6 +155,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://spec-bridge.fly.dev/   # 307（
 | 症状 | 原因 |
 | --- | --- |
 | worker が起動直後に落ちる | `DATABASE_URL` が無い。`fly secrets list` で確認（値は出ません） |
+| worker が「データベースに接続できませんでした」で再起動を繰り返す | **DB のマシンが停止している**ことが多い。`fly status -a <db アプリ>` を見て、停止していたら `fly machine start <ID>`。Fly の内部 DNS は停止中のマシンを起こしません |
 | 画面が 500 | `SPEC_BRIDGE_SESSION_SECRET` か `DATABASE_URL` が無い。`fly logs` に理由が出る |
 | ログインしても `/login` に戻る | `SPEC_BRIDGE_ALLOWED_LOGINS` に自分が入っていない |
 | 認可のあと「state が一致しません」 | App の Callback URL と `SPEC_BRIDGE_BASE_URL` のホストが違う |
