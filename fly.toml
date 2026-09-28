@@ -3,6 +3,8 @@
 # **ホスト名は1つ。** Fly は1つのホスト名を複数プロセスへ振り分けられないので、
 # webhook の受け口は画面と同じプロセス（Next）に置いている。
 # 受信は「署名を検証して積むだけ」なので軽く、解析は worker が引き取る。
+# アプリ名は **Fly 全体で一意**。取られていたら変えること。
+# 変えたら SPEC_BRIDGE_BASE_URL と、GitHub App の URL も合わせる
 app = "spec-bridge"
 primary_region = "nrt"
 
@@ -32,9 +34,6 @@ primary_region = "nrt"
   min_machines_running = 1
   # webhook を受けるプロセスなので、止まっていると配信を取りこぼす
   processes = ["app"]
-
-  [http_service.http_options.response]
-    pristine = true
 
 [[http_service.checks]]
   grace_period = "20s"

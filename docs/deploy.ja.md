@@ -23,6 +23,16 @@ Postgres  ジョブとインストールの設定
 **画面を Vercel に置かないのは、`/api/ask` が Agent SDK（Claude Code のバイナリを起動）を使うため**です。
 サーバーレスでは動きません。
 
+## 0. 準備
+
+```bash
+brew install flyctl
+fly auth login
+```
+
+**この手順は Fly の課金設定が要ります**（無料枠だけでは常時稼働できません）。
+月あたりの目安は、app（1GB）と worker（2GB）で $10〜20 程度です。
+
 ## 1. Postgres を用意する
 
 Fly Postgres でも Neon でも構いません。接続文字列が取れれば十分です。
@@ -33,6 +43,11 @@ fly postgres create --name spec-bridge-db --region nrt
 fly postgres attach spec-bridge-db --app spec-bridge   # DATABASE_URL が設定される
 ```
 
+> **Fly の Postgres まわりはコマンドが変わることがあります。** 上が通らなければ
+> `fly postgres --help` / `fly mpg --help` を見てください。
+> **Neon など外部の Postgres でも構いません**（`DATABASE_URL` を secrets に入れるだけ）。
+> このアプリは表を起動時に作る以外、特別なことをしていません。
+
 **このデータベースは消えても復旧できます。** 生成物は docs リポジトリ（GitHub）にあり、
 ここにあるのは実行中のジョブとインストールの設定だけです。
 
@@ -40,9 +55,16 @@ fly postgres attach spec-bridge-db --app spec-bridge   # DATABASE_URL が設定�
 
 ```bash
 fly launch --no-deploy --copy-config --name spec-bridge --region nrt
+fly config validate    # fly.toml がその版のスキーマに合うか確かめる
 ```
 
-`fly.toml` はリポジトリにあるものをそのまま使えます。`app` の名前だけ自分のものに変えてください。
+**アプリ名は Fly 全体で一意です。** `spec-bridge` が取られていたら別の名前にして、
+`fly.toml` の `app` と `SPEC_BRIDGE_BASE_URL`、そして手順5の GitHub App の URL を
+**3か所とも**同じホスト名に揃えてください。ここがずれると、
+webhook が届かない／ログイン後に戻ってこない／Cookie に `Secure` が付かない、のどれかが起きます。
+
+`fly launch` は対話で Postgres や Redis の追加を聞いてくることがあります。
+手順1で用意済みなら**いいえ**で構いません。
 
 ## 3. 秘密情報を入れる
 
@@ -67,10 +89,16 @@ fly secrets set \
 ## 4. デプロイする
 
 ```bash
-fly deploy
-fly status            # app と worker が動いているか
+fly deploy --remote-only   # 手元の Docker を使わず、Fly 側でイメージを作る
+fly status                 # app と worker が動いているか
 fly logs -a spec-bridge
 ```
+
+`--remote-only` にすると Docker Desktop を起動しなくて済みます。
+手元でビルドを確かめたい場合は `docker build .` を先に一度通してください。
+
+> ⚠️ **秘密情報を入れる前にデプロイすると、worker が起動に失敗します**
+> （`DATABASE_URL` が無いため。ログに理由が出ます）。手順3を先に済ませてください。
 
 worker の起動ログに、認証方式・提出先の既定・PR 1本あたりの上限・同時解析数が出ます。
 
@@ -96,6 +124,22 @@ curl -s -o /dev/null -w '%{http_code}\n' https://spec-bridge.fly.dev/   # 307（
 そのうえで、対象リポジトリで小さな PR をマージします。
 `fly logs` に受領（`ジョブを積みました`）が出て、worker 側で解析が始まれば通っています。
 画面の `/runs` でも、費用と進み具合が見えます。
+
+## つまずいたら
+
+| 症状 | 原因 |
+| --- | --- |
+| worker が起動直後に落ちる | `DATABASE_URL` が無い。`fly secrets list` で確認（値は出ません） |
+| 画面が 500 | `SPEC_BRIDGE_SESSION_SECRET` か `DATABASE_URL` が無い。`fly logs` に理由が出る |
+| ログインしても `/login` に戻る | `SPEC_BRIDGE_ALLOWED_LOGINS` に自分が入っていない |
+| 認可のあと「state が一致しません」 | App の Callback URL と `SPEC_BRIDGE_BASE_URL` のホストが違う |
+| webhook が 401 | `GITHUB_WEBHOOK_SECRET` が App 側と違う |
+| 202 は返るが何も起きない | worker が動いていない。`fly status` と `/runs` を見る |
+| 解析が「提出先が設定されていません」で失敗 | 画面の `/installations` で提出先を設定するか、`SPEC_BRIDGE_DOCS_REPO` を入れる |
+| `fly config validate` がエラー | fly.toml のスキーマがその版と違う。エラーが指す項目を直す |
+
+`fly logs` は起動時に、認証方式・提出先の既定・PR 1本あたりの上限・同時解析数を出します。
+**まずここを見れば、設定が意図どおり効いているか分かります。**
 
 ## 運用
 
