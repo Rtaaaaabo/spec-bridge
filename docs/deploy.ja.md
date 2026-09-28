@@ -33,25 +33,7 @@ fly auth login
 **この手順は Fly の課金設定が要ります**（無料枠だけでは常時稼働できません）。
 月あたりの目安は、app（1GB）と worker（2GB）で $10〜20 程度です。
 
-## 1. Postgres を用意する
-
-Fly Postgres でも Neon でも構いません。接続文字列が取れれば十分です。
-表（`jobs` / `installations`）は起動時に自動で作られます。
-
-```bash
-fly postgres create --name spec-bridge-db --region nrt
-fly postgres attach spec-bridge-db --app spec-bridge   # DATABASE_URL が設定される
-```
-
-> **Fly の Postgres まわりはコマンドが変わることがあります。** 上が通らなければ
-> `fly postgres --help` / `fly mpg --help` を見てください。
-> **Neon など外部の Postgres でも構いません**（`DATABASE_URL` を secrets に入れるだけ）。
-> このアプリは表を起動時に作る以外、特別なことをしていません。
-
-**このデータベースは消えても復旧できます。** 生成物は docs リポジトリ（GitHub）にあり、
-ここにあるのは実行中のジョブとインストールの設定だけです。
-
-## 2. アプリを作る
+## 1. アプリを作る
 
 ```bash
 fly launch --no-deploy --copy-config --name spec-bridge --region nrt
@@ -64,7 +46,29 @@ fly config validate    # fly.toml がその版のスキーマに合うか確か�
 webhook が届かない／ログイン後に戻ってこない／Cookie に `Secure` が付かない、のどれかが起きます。
 
 `fly launch` は対話で Postgres や Redis の追加を聞いてくることがあります。
-手順1で用意済みなら**いいえ**で構いません。
+**いいえ**で構いません（Postgres は次の手順で用意します）。
+
+## 2. Postgres を用意してつなぐ
+
+Fly Postgres でも Neon でも構いません。接続文字列が取れれば十分です。
+表（`jobs` / `installations`）は起動時に自動で作られます。
+
+**`attach` はアプリが先に存在している必要があります**（だから手順1が先）。
+
+```bash
+fly postgres create --name spec-bridge-db --region nrt
+fly postgres attach spec-bridge-db --app spec-bridge   # DATABASE_URL が設定される
+```
+
+> `fly postgres` は「サポート対象外（unmanaged）」の扱いになり、
+> 運用と復旧は自分持ちだという警告が出ます。**このアプリでは気にしなくて構いません** —
+> ここに置くのは実行中のジョブとインストールの設定だけで、
+> **生成物は docs リポジトリにあるので、消えても復旧できます**。
+> 管理されたものが欲しければ `fly mpg`（Managed Postgres）、
+> 外部でよければ Neon でも構いません。どれでも `DATABASE_URL` を渡すだけです。
+
+> **コマンドは Fly の版で変わります。** 上が通らなければ `fly postgres --help` /
+> `fly mpg --help` を見てください。このアプリが要るのは `DATABASE_URL` だけです。
 
 ## 3. 秘密情報を入れる
 

@@ -33,24 +33,7 @@ fly auth login
 **This needs billing enabled on Fly** — the free allowance alone will not keep it running. Expect roughly
 $10–20/month for the app (1GB) and worker (2GB).
 
-## 1. Postgres
-
-Fly Postgres or Neon, whichever you prefer; a connection string is all that is needed. The tables (`jobs`,
-`installations`) are created at startup.
-
-```bash
-fly postgres create --name spec-bridge-db --region nrt
-fly postgres attach spec-bridge-db --app spec-bridge   # sets DATABASE_URL
-```
-
-> **Fly's Postgres commands change from time to time.** If the above does not work, check
-> `fly postgres --help` / `fly mpg --help`. **Any external Postgres (Neon, for instance) is fine** — put
-> its `DATABASE_URL` in the secrets. Nothing here depends on Fly Postgres specifically.
-
-**Losing this database is recoverable.** The documents live in the docs repository on GitHub; this holds
-in-flight jobs and per-installation settings only.
-
-## 2. Create the app
+## 1. Create the app
 
 ```bash
 fly launch --no-deploy --copy-config --name spec-bridge --region nrt
@@ -62,7 +45,28 @@ consistent in **all three places**: `app` in `fly.toml`, `SPEC_BRIDGE_BASE_URL`,
 step 5. A mismatch shows up as a webhook that never arrives, a sign-in that never returns, or a cookie
 without `Secure`.
 
-`fly launch` may offer to provision Postgres or Redis; decline if you did step 1 already.
+`fly launch` may offer to provision Postgres or Redis; decline — the next step covers Postgres.
+
+## 2. Postgres
+
+Fly Postgres or Neon, whichever you prefer; a connection string is all that is needed. The tables (`jobs`,
+`installations`) are created at startup.
+
+**`attach` requires the app to exist already** — which is why step 1 comes first.
+
+```bash
+fly postgres create --name spec-bridge-db --region nrt
+fly postgres attach spec-bridge-db --app spec-bridge   # sets DATABASE_URL
+```
+
+> `fly postgres` now warns that it is "unmanaged" and that operations and recovery are your
+> responsibility. **That is fine here** — this database holds in-flight jobs and per-installation
+> settings, and **the documents themselves live in the docs repository**, so losing it is recoverable.
+> If you want a managed one, use `fly mpg` (Managed Postgres); Neon works too. All of them just need to
+> hand you a `DATABASE_URL`.
+
+> **These commands change between CLI versions.** If the above does not work, check
+> `fly postgres --help` / `fly mpg --help`. All this app needs is a `DATABASE_URL`.
 
 ## 3. Secrets
 
