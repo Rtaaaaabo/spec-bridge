@@ -70,27 +70,47 @@ fly postgres attach spec-bridge-db --app spec-bridge   # sets DATABASE_URL
 
 ## 3. Secrets
 
+If the values already live in your local `.env` and key file, pipe them in rather than retyping. The API
+key is read with `read -rs`, so it never reaches your shell history.
+
 ```bash
-fly secrets set \
-  ANTHROPIC_API_KEY='sk-ant-...' \
-  GITHUB_APP_ID='1234567' \
-  GITHUB_APP_PRIVATE_KEY="$(awk '{printf "%s\\n", $0}' ~/.config/spec-bridge/app.pem)" \
-  GITHUB_WEBHOOK_SECRET='...' \
-  GITHUB_APP_CLIENT_ID='Iv23li...' \
-  GITHUB_APP_CLIENT_SECRET='...' \
-  SPEC_BRIDGE_SESSION_SECRET="$(openssl rand -hex 32)" \
-  SPEC_BRIDGE_ALLOWED_LOGINS='your-github-login'
+read -rs -p "ANTHROPIC_API_KEY: " ANTHROPIC_KEY; echo
+
+{
+  grep -E '^(GITHUB_APP_ID|GITHUB_WEBHOOK_SECRET|GITHUB_APP_CLIENT_ID|GITHUB_APP_CLIENT_SECRET|SPEC_BRIDGE_DOCS_REPO|SPEC_BRIDGE_ALLOWED_LOGINS)=' .env
+  printf '%s\n' "GITHUB_APP_PRIVATE_KEY=$(awk '{printf "%s\\n", $0}' ~/.config/spec-bridge/app.pem)"
+  printf '%s\n' "SPEC_BRIDGE_SESSION_SECRET=$(openssl rand -hex 32)"
+  printf '%s\n' "ANTHROPIC_API_KEY=$ANTHROPIC_KEY"
+} | fly secrets import --app spec-bridge
+
+unset ANTHROPIC_KEY
+```
+
+> ⚠️ **Use `printf`, not `echo`.** zsh's `echo` expands `\n`, which unfolds the single-line private key
+> back into many lines and fails with `Secrets must be provided as NAME=VALUE pairs`. (We hit this.)
+
+Setting the key on its own avoids the escaping question entirely — the reader accepts real newlines as
+well as `\n`:
+
+```bash
+fly secrets set --app spec-bridge \
+  GITHUB_APP_PRIVATE_KEY="$(cat ~/.config/spec-bridge/app.pem)"
 ```
 
 - **`ANTHROPIC_API_KEY` is required.** There is no Claude Code login inside a container, so this is where
-  real spending starts (a large pull request runs $10–15)
-- The private key is passed on one line with newlines escaped as `\n` (the `awk` above does that)
+  real spending starts (a large pull request runs $10–15). Set a spend limit on the Anthropic side too —
+  `SPEC_BRIDGE_PR_BUDGET_USD` caps one pull request, not the month
+- **Do not put the API key in your local `.env`**: local `analyze` / `backfill` runs would switch from the
+  Claude Code subscription to API billing
+- **Do not set `DATABASE_URL`** — `attach` in step 2 already did
+- **Generate a fresh session secret for production**; sharing the local one buys nothing
 - **Without `SPEC_BRIDGE_ALLOWED_LOGINS` nobody can sign in.** Leaving it empty also means nobody can, so
   the failure mode points the safe way
 
 ## 4. Deploy
 
 ```bash
+fly secrets list           # names and digests only. Ten entries, counting DATABASE_URL
 fly deploy --remote-only   # build on Fly's builders instead of local Docker
 fly status
 fly logs -a spec-bridge

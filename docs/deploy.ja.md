@@ -72,27 +72,48 @@ fly postgres attach spec-bridge-db --app spec-bridge   # DATABASE_URL が設定�
 
 ## 3. 秘密情報を入れる
 
+手元の `.env` と鍵ファイルに値があるなら、**手で写さずに流し込む**のが安全です。
+API キーは `read -rs` で受け取るので、シェルの履歴にも残りません。
+
 ```bash
-fly secrets set \
-  ANTHROPIC_API_KEY='sk-ant-...' \
-  GITHUB_APP_ID='1234567' \
-  GITHUB_APP_PRIVATE_KEY="$(awk '{printf "%s\\n", $0}' ~/.config/spec-bridge/app.pem)" \
-  GITHUB_WEBHOOK_SECRET='...' \
-  GITHUB_APP_CLIENT_ID='Iv23li...' \
-  GITHUB_APP_CLIENT_SECRET='...' \
-  SPEC_BRIDGE_SESSION_SECRET="$(openssl rand -hex 32)" \
-  SPEC_BRIDGE_ALLOWED_LOGINS='あなたの GitHub ユーザー名'
+read -rs -p "ANTHROPIC_API_KEY: " ANTHROPIC_KEY; echo
+
+{
+  grep -E '^(GITHUB_APP_ID|GITHUB_WEBHOOK_SECRET|GITHUB_APP_CLIENT_ID|GITHUB_APP_CLIENT_SECRET|SPEC_BRIDGE_DOCS_REPO|SPEC_BRIDGE_ALLOWED_LOGINS)=' .env
+  printf '%s\n' "GITHUB_APP_PRIVATE_KEY=$(awk '{printf "%s\\n", $0}' ~/.config/spec-bridge/app.pem)"
+  printf '%s\n' "SPEC_BRIDGE_SESSION_SECRET=$(openssl rand -hex 32)"
+  printf '%s\n' "ANTHROPIC_API_KEY=$ANTHROPIC_KEY"
+} | fly secrets import --app spec-bridge
+
+unset ANTHROPIC_KEY
+```
+
+> ⚠️ **`printf` を `echo` にしないでください。** zsh の `echo` は `\n` を改行として解釈するので、
+> せっかく1行に畳んだ秘密鍵が元の複数行に戻り、
+> `Secrets must be provided as NAME=VALUE pairs` で失敗します（実際に踏みました）。
+
+秘密鍵だけ別に入れてもよく、そのほうがエスケープの問題は起きません
+（読み込み側は改行そのままでも `\n` でも受け付けます）。
+
+```bash
+fly secrets set --app spec-bridge \
+  GITHUB_APP_PRIVATE_KEY="$(cat ~/.config/spec-bridge/app.pem)"
 ```
 
 - **`ANTHROPIC_API_KEY` は必須です。** コンテナに Claude Code のログインは無いので、
-  ここから実費が発生します（大規模 PR で1本 $10〜15）
-- 秘密鍵は改行を `\n` にエスケープして1行で渡します（上の `awk` がそれをします）
+  ここから実費が発生します（大規模 PR で1本 $10〜15）。
+  Anthropic 側でも上限を設定してください（`SPEC_BRIDGE_PR_BUDGET_USD` は PR 1本の上限で、月額ではありません）
+- **API キーを手元の `.env` に書かないでください。** 書くと、ローカルの `analyze` / `backfill` が
+  サブスクリプションではなく API 課金に切り替わります
+- **`DATABASE_URL` は入れません。** 手順2の `attach` が設定済みです
+- **セッション鍵は本番用に新しく作ります。** 手元と共有する利点はありません
 - **`SPEC_BRIDGE_ALLOWED_LOGINS` を忘れると誰もログインできません。** 逆に、
   ここを空のまま公開しても誰も入れないので、事故の向きは安全側です
 
 ## 4. デプロイする
 
 ```bash
+fly secrets list           # 名前とダイジェストだけ出る（値は出ない）。DATABASE_URL を含めて10個
 fly deploy --remote-only   # 手元の Docker を使わず、Fly 側でイメージを作る
 fly status                 # app と worker が動いているか
 fly logs -a spec-bridge
