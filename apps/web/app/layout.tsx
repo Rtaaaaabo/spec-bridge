@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "spec-bridge — CX サポートデスク",
+  title: "spec-bridge",
   description: "機能仕様ドキュメントを根拠に、問い合わせが仕様かバグかを判断します",
 };
 

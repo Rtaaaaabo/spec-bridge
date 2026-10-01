@@ -80,13 +80,16 @@ export function parseRun(payload: Record<string, unknown>): BackfillRun {
     repo,
     docsRepo,
     branch,
-    limit: typeof limit === "number" ? limit : 20,
+    limit: typeof limit === "number" ? limit : DEFAULT_FEATURE_LIMIT,
     budgetUsd: typeof budgetUsd === "number" ? budgetUsd : DEFAULT_BUDGET_USD,
   };
 }
 
 /** 指定が無いときの予算。1機能 約 $1.7 の実測から、12〜14機能ぶん */
 export const DEFAULT_BUDGET_USD = 25;
+
+/** 指定が無いときに書く機能数の上限。実際には予算が先に効くことが多い */
+export const DEFAULT_FEATURE_LIMIT = 20;
 
 export interface RunProgress {
   /** 終わった機能（成功） */

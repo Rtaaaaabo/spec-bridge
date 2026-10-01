@@ -29,9 +29,9 @@ export default async function Page() {
       <SiteNav current="ask" login={session.login} />
       <main className="mx-auto max-w-6xl px-6 py-8">
         <header className="mb-8">
-          <h1 className="text-2xl font-bold">CX サポートデスク</h1>
+          <h1 className="text-2xl font-bold">仕様を調べる</h1>
           <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-            社内の機能仕様ドキュメントだけを根拠に回答します。根拠を示せない質問には答えません。
+            機能ドキュメントだけを根拠に答えます。根拠を示せないことには答えません。
           </p>
         </header>
 

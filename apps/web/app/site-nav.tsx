@@ -5,9 +5,9 @@
  * 辿り着けなかった。**何をどこでするか**が分かる名前にする。
  */
 const ITEMS = [
-  { href: "/", key: "ask", label: "問い合わせ" },
+  { href: "/", key: "ask", label: "仕様を調べる" },
   { href: "/runs", key: "runs", label: "解析" },
-  { href: "/installations", key: "installations", label: "設定" },
+  { href: "/installations", key: "installations", label: "リポジトリ" },
 ] as const;
 
 export type NavKey = (typeof ITEMS)[number]["key"];

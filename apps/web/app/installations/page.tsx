@@ -71,7 +71,7 @@ export default async function InstallationsPage() {
       <main className="mx-auto max-w-4xl px-6 py-8">
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">インストール</h1>
+            <h1 className="text-2xl font-bold">リポジトリ</h1>
             <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
               spec-bridge が読めるリポジトリです。ここに無いリポジトリは解析できません。
             </p>
