@@ -134,7 +134,10 @@ worker の起動ログに、認証方式・提出先の既定・PR 1本あたり
 | 設定 | 値 |
 | --- | --- |
 | Webhook URL | `https://spec-bridge.fly.dev/api/webhooks/github` |
-| Callback URL（Identifying and authorizing users） | `https://spec-bridge.fly.dev/api/github/callback` |
+| Redirect URI（Identifying and authorizing users。旧称 Callback URL） | `https://spec-bridge.fly.dev/api/github/callback` を**追加**する |
+
+Redirect URI は10個まで登録できます。`http://localhost:3000/api/github/callback` は消さずに残すと、
+手元でも同じ App でログインできます。
 
 `SPEC_BRIDGE_BASE_URL`（`fly.toml`）も同じホストに合わせてください。
 **この値からセッション Cookie の `Secure` を決めています。**
@@ -156,9 +159,11 @@ curl -s -o /dev/null -w '%{http_code}\n' https://spec-bridge.fly.dev/   # 307（
 | --- | --- |
 | worker が起動直後に落ちる | `DATABASE_URL` が無い。`fly secrets list` で確認（値は出ません） |
 | worker が「データベースに接続できませんでした」で再起動を繰り返す | **DB のマシンが停止している**ことが多い。`fly status -a <db アプリ>` を見て、停止していたら `fly machine start <ID>`。Fly の内部 DNS は停止中のマシンを起こしません |
+| DB・画面・worker が**起動から5分で止まる** | Fly のお試し枠（クレジットカード未登録）。`fly logs -a <db アプリ>` に `Trial machine stopping` が出る。https://fly.io/trial でカードを登録し、DB → worker → 画面の順に `fly machine start <ID>` |
+| `fly deploy` のあともマシンが `stopped` のまま | デプロイ前に止まっていたマシンは、止まったまま更新される。`fly machine start <ID>` で起こす |
 | 画面が 500 | `SPEC_BRIDGE_SESSION_SECRET` か `DATABASE_URL` が無い。`fly logs` に理由が出る |
 | ログインしても `/login` に戻る | `SPEC_BRIDGE_ALLOWED_LOGINS` に自分が入っていない |
-| 認可のあと「state が一致しません」 | App の Callback URL と `SPEC_BRIDGE_BASE_URL` のホストが違う |
+| 認可のあと「state が一致しません」 | App の Redirect URI と `SPEC_BRIDGE_BASE_URL` のホストが違う |
 | webhook が 401 | `GITHUB_WEBHOOK_SECRET` が App 側と違う |
 | 202 は返るが何も起きない | worker が動いていない。`fly status` と `/runs` を見る |
 | 解析が「提出先が設定されていません」で失敗 | 画面の `/installations` で提出先を設定するか、`SPEC_BRIDGE_DOCS_REPO` を入れる |

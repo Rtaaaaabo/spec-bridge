@@ -130,7 +130,10 @@ concurrency.
 | Setting | Value |
 | --- | --- |
 | Webhook URL | `https://spec-bridge.fly.dev/api/webhooks/github` |
-| Callback URL (Identifying and authorizing users) | `https://spec-bridge.fly.dev/api/github/callback` |
+| Redirect URI (Identifying and authorizing users; formerly Callback URL) | **Add** `https://spec-bridge.fly.dev/api/github/callback` |
+
+Up to 10 redirect URIs are allowed. Keep `http://localhost:3000/api/github/callback` so the same App
+still works for local sign-in.
 
 Keep `SPEC_BRIDGE_BASE_URL` (in `fly.toml`) on the same host — **the session cookie's `Secure` flag is
 derived from it**.
@@ -151,9 +154,11 @@ it up; `/runs` shows progress and cost.
 | --- | --- |
 | Worker exits right after starting | No `DATABASE_URL`. Check `fly secrets list` (values are not shown) |
 | Worker restarts with "データベースに接続できませんでした" | Usually **the database machine is stopped**. Check `fly status -a <db app>` and `fly machine start <id>` — Fly's internal DNS does not wake stopped machines |
+| The database, UI and worker **stop 5 minutes after starting** | Your Fly organisation is on the trial (no credit card). `fly logs -a <db app>` shows `Trial machine stopping`. Add a card at https://fly.io/trial, then `fly machine start <id>` the database, worker and UI in that order |
+| Machines stay `stopped` after `fly deploy` | Machines that were stopped before the deploy are updated but not started. `fly machine start <id>` |
 | UI returns 500 | `SPEC_BRIDGE_SESSION_SECRET` or `DATABASE_URL` missing; `fly logs` says which |
 | Sign-in bounces back to `/login` | Your account is not in `SPEC_BRIDGE_ALLOWED_LOGINS` |
-| "state が一致しません" after authorizing | The App's Callback URL and `SPEC_BRIDGE_BASE_URL` are on different hosts |
+| "state が一致しません" after authorizing | The App's Redirect URI and `SPEC_BRIDGE_BASE_URL` are on different hosts |
 | Webhook returns 401 | `GITHUB_WEBHOOK_SECRET` differs from the App's |
 | 202 but nothing happens | The worker isn't running. Check `fly status` and `/runs` |
 | Analysis fails with "提出先が設定されていません" | Set the docs repository at `/installations`, or set `SPEC_BRIDGE_DOCS_REPO` |

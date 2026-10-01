@@ -175,7 +175,7 @@ pnpm check-auth --repo-name <解析対象の org/repo> --clone
 `apps/web`（CX サポートデスク / インストール一覧）には**ログインが必要**です。
 GitHub App の user-to-server OAuth を使うので、新しい App は要りません。
 
-1. App の設定画面（General）で **Callback URL** に次を登録する
+1. App の設定画面（General）の **Identifying and authorizing users** で、**Redirect URI**（旧称 Callback URL）に次を登録する
 
    ```
    http://localhost:3000/api/github/callback

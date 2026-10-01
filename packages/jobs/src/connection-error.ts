@@ -10,7 +10,7 @@ export function describeConnectionFailure(error: unknown): string {
   const code = (error as { code?: string } | null)?.code;
 
   const connectionProblem =
-    /terminated unexpectedly|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|timeout expired/i.test(
+    /terminated unexpectedly|terminated due to connection timeout|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|timeout expired/i.test(
       message,
     ) || ["ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "EHOSTUNREACH"].includes(code ?? "");
 
