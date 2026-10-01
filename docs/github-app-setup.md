@@ -177,7 +177,7 @@ It checks four things:
 `apps/web` (the support desk and the installations page) **requires sign-in**. It uses the GitHub App's
 user-to-server OAuth, so no second app is needed.
 
-1. In the App settings (General), set the **Callback URL**:
+1. In the App settings (General), under **Identifying and authorizing users**, set the **Redirect URI** (formerly Callback URL):
 
    ```
    http://localhost:3000/api/github/callback
