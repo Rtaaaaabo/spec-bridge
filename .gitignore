@@ -10,6 +10,8 @@ build/
 
 # TypeScript / ツールのキャッシュ
 *.tsbuildinfo
+# Next.js が起動のたびに書き換える（dev と build で中身が変わる）
+next-env.d.ts
 .eslintcache
 
 # 環境変数（.env.bak などのバックアップも含めて除外する）
