@@ -22,6 +22,11 @@ test("接続タイムアウトも拾う", () => {
     describeConnectionFailure(new Error("timeout expired")),
     /確かめること/,
   );
+  // connectionTimeoutMillis で打ち切ったときに pg が出す文言。実際に Fly で出た
+  assert.match(
+    describeConnectionFailure(new Error("Connection terminated due to connection timeout")),
+    /確かめること/,
+  );
 });
 
 // 接続とは関係ない失敗に、接続の話を足すと誤誘導になる
