@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { progressLabel, type RunSummary } from "@spec-bridge/backfill";
+import type { JobState } from "@spec-bridge/jobs";
 import { formatElapsed } from "@spec-bridge/core";
 import { currentSession } from "@/lib/auth";
 import { SiteNav } from "../site-nav";
@@ -16,8 +17,17 @@ const STATE_LABEL: Record<RunSummary["state"], { text: string; cls: string }> = 
   failed: { text: "失敗", cls: "bg-rose-500/15 text-rose-400" },
 };
 
+const JOB_STATE_LABEL: Record<JobState, string> = {
+  queued: "順番待ち",
+  running: "実行中",
+  succeeded: "完了",
+  failed: "失敗",
+};
+
 /**
- * バックフィルのラン一覧。
+ * 書き起こし（バックフィル）の履歴と、PR ごとの更新。
+ *
+ * 画面では「ラン」「バックフィル」と呼ばない。**押すと何が起きるか**が分かる言葉にする。
  *
  * これまでジョブの状態は SQL でしか見えなかった。
  * **費用と「途中で終わったか」が分かることが要点**で、
@@ -42,9 +52,11 @@ export default async function RunsPage() {
       <main className="mx-auto max-w-5xl px-6 py-8">
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">バックフィルのラン</h1>
-            <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-              いまのコードから機能ドキュメント一式を書き起こした記録です。
+            <h1 className="text-2xl font-bold">既存コードから書き起こす</h1>
+            <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
+              リポジトリのいまのコードを読んで、機能ドキュメントをまとめて作り、docs リポジトリへの PR として出します。
+              最初の1回や、作り直したいときに使います。
+              PR がマージされたときの更新は自動で行われます（下の「PR ごとの更新」）。
             </p>
           </div>
         </header>
@@ -57,7 +69,8 @@ export default async function RunsPage() {
 
         <StartRunForm />
 
-        <ul className="mt-8 space-y-3">
+        <h2 className="mt-10 text-sm font-semibold">書き起こしの履歴</h2>
+        <ul className="mt-3 space-y-3">
           {runs.map((run) => {
             const state = STATE_LABEL[run.state];
             return (
@@ -106,34 +119,37 @@ export default async function RunsPage() {
         </ul>
 
         {runs.length === 0 && !error && (
-          <p className="mt-6 text-sm" style={{ color: "var(--muted)" }}>
-            まだランがありません。上のフォームから始められます。
+          <p className="mt-3 text-sm" style={{ color: "var(--muted)" }}>
+            まだ書き起こしていません。上のフォームから始められます。
           </p>
         )}
 
-        {analyze.length > 0 && (
-          <section className="mt-12">
-            <h2 className="text-sm font-semibold">最近の PR 解析</h2>
-            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
-              webhook から積まれたぶんです。「マージしたのに何も起きない」ときはここを見てください。
+        <section className="mt-12">
+          <h2 className="text-sm font-semibold">PR ごとの更新</h2>
+          <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+            PR がマージされるたびに、変わった機能のドキュメントを自動で更新しています。「マージしたのに何も起きない」ときはここを見てください。
+          </p>
+          {analyze.length === 0 && !error && (
+            <p className="mt-3 text-sm" style={{ color: "var(--muted)" }}>
+              まだありません。対象リポジトリで PR がマージされると、ここに出ます。
             </p>
-            <ul className="mt-3 space-y-1 text-xs">
-              {analyze.map((job) => (
-                <li key={job.id} className="flex flex-wrap items-baseline gap-2">
-                  <span style={{ color: "var(--muted)" }}>{job.createdAt.toLocaleString("ja-JP")}</span>
-                  <span>{String(job.payload["repo"] ?? "?")}#{String(job.payload["number"] ?? "?")}</span>
-                  <span style={{ color: "var(--muted)" }}>{job.state}</span>
-                  {typeof job.result?.["prUrl"] === "string" && (
-                    <a href={job.result["prUrl"]} className="underline" target="_blank" rel="noreferrer">
-                      PR
-                    </a>
-                  )}
-                  {job.lastError && <span className="text-rose-400">{job.lastError.slice(0, 60)}</span>}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+          )}
+          <ul className="mt-3 space-y-1 text-xs">
+            {analyze.map((job) => (
+              <li key={job.id} className="flex flex-wrap items-baseline gap-2">
+                <span style={{ color: "var(--muted)" }}>{job.createdAt.toLocaleString("ja-JP")}</span>
+                <span>{String(job.payload["repo"] ?? "?")}#{String(job.payload["number"] ?? "?")}</span>
+                <span style={{ color: "var(--muted)" }}>{JOB_STATE_LABEL[job.state]}</span>
+                {typeof job.result?.["prUrl"] === "string" && (
+                  <a href={job.result["prUrl"]} className="underline" target="_blank" rel="noreferrer">
+                    PR
+                  </a>
+                )}
+                {job.lastError && <span className="text-rose-400">{job.lastError.slice(0, 60)}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
       </main>
     </>
   );

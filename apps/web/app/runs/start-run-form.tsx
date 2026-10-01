@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 /**
- * ランを始めるフォーム。
+ * 書き起こし（バックフィル）を始めるフォーム。
  *
  * **1機能 約 $1.7 かかる。** 予算を必ず入力させ、押した直後に上限が見えるようにする。
  */
@@ -26,7 +26,7 @@ export function StartRunForm() {
       });
       const body = (await response.json()) as { error?: string; runId?: string };
       if (!response.ok) throw new Error(body.error ?? `失敗しました（${response.status}）`);
-      setMessage(`積みました（run ${body.runId?.slice(0, 8)}）。worker が拾うと進みます。`);
+      setMessage(`受け付けました（${body.runId?.slice(0, 8)}）。順番が来ると始まり、進み具合は下の履歴に出ます。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -80,7 +80,7 @@ export function StartRunForm() {
           className="rounded px-3 py-1.5 text-sm font-medium disabled:opacity-50"
           style={{ border: "1px solid var(--border)" }}
         >
-          {pending ? "積んでいます…" : "ランを始める"}
+          {pending ? "受け付けています…" : "書き起こしを始める"}
         </button>
       </div>
       <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
