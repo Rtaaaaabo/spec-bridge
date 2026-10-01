@@ -150,6 +150,7 @@ it up; `/runs` shows progress and cost.
 | Symptom | Cause |
 | --- | --- |
 | Worker exits right after starting | No `DATABASE_URL`. Check `fly secrets list` (values are not shown) |
+| Worker restarts with "データベースに接続できませんでした" | Usually **the database machine is stopped**. Check `fly status -a <db app>` and `fly machine start <id>` — Fly's internal DNS does not wake stopped machines |
 | UI returns 500 | `SPEC_BRIDGE_SESSION_SECRET` or `DATABASE_URL` missing; `fly logs` says which |
 | Sign-in bounces back to `/login` | Your account is not in `SPEC_BRIDGE_ALLOWED_LOGINS` |
 | "state が一致しません" after authorizing | The App's Callback URL and `SPEC_BRIDGE_BASE_URL` are on different hosts |

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { describeConnectionFailure } from "@spec-bridge/jobs";
 import type { TenantStore } from "./store.ts";
 import type { Tenant, TenantInput } from "./types.ts";
 
@@ -27,13 +28,23 @@ function toTenant(row: TenantRow): Tenant {
 export class PostgresTenantStore implements TenantStore {
   private readonly pool: pg.Pool;
 
-  constructor(connectionString: string, options: { max?: number } = {}) {
-    this.pool = new pg.Pool({ connectionString, max: options.max ?? 2 });
+  constructor(connectionString: string, options: { max?: number; connectionTimeoutMs?: number } = {}) {
+    this.pool = new pg.Pool({
+      connectionString,
+      max: options.max ?? 2,
+      // 既定（無期限）だと、宛先が起きていないときに黙ってぶら下がる。
+      // 実際に Fly で、DB のマシンが停止していて40秒後に落ちるのを踏んだ
+      connectionTimeoutMillis: options.connectionTimeoutMs ?? 10_000,
+    });
   }
 
   async migrate(): Promise<void> {
     const here = dirname(fileURLToPath(import.meta.url));
-    await this.pool.query(await readFile(join(here, "schema.sql"), "utf8"));
+    try {
+      await this.pool.query(await readFile(join(here, "schema.sql"), "utf8"));
+    } catch (error) {
+      throw new Error(describeConnectionFailure(error));
+    }
   }
 
   /**
