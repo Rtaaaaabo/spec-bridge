@@ -154,6 +154,8 @@ it up; `/runs` shows progress and cost.
 | --- | --- |
 | Worker exits right after starting | No `DATABASE_URL`. Check `fly secrets list` (values are not shown) |
 | Worker restarts with "データベースに接続できませんでした" | Usually **the database machine is stopped**. Check `fly status -a <db app>` and `fly machine start <id>` — Fly's internal DNS does not wake stopped machines |
+| The database, UI and worker **stop 5 minutes after starting** | Your Fly organisation is on the trial (no credit card). `fly logs -a <db app>` shows `Trial machine stopping`. Add a card at https://fly.io/trial, then `fly machine start <id>` the database, worker and UI in that order |
+| Machines stay `stopped` after `fly deploy` | Machines that were stopped before the deploy are updated but not started. `fly machine start <id>` |
 | UI returns 500 | `SPEC_BRIDGE_SESSION_SECRET` or `DATABASE_URL` missing; `fly logs` says which |
 | Sign-in bounces back to `/login` | Your account is not in `SPEC_BRIDGE_ALLOWED_LOGINS` |
 | "state が一致しません" after authorizing | The App's Redirect URI and `SPEC_BRIDGE_BASE_URL` are on different hosts |
