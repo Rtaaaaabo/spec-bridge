@@ -6,6 +6,7 @@
   --border: #262c37;
   --text: #e6e9ef;
   --muted: #8d97a8;
+  --accent: #4f7cff;
 }
 
 @media (prefers-color-scheme: light) {
@@ -15,6 +16,7 @@
     --border: #e2e5eb;
     --text: #1a1d23;
     --muted: #667085;
+    --accent: #2f5bea;
   }
 }
 

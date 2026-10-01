@@ -5,6 +5,7 @@ import {
   readAppCredentials,
 } from "@spec-bridge/github";
 import { currentSession } from "@/lib/auth";
+import { SiteNav } from "../site-nav";
 import { fallbackDocsRepo } from "@/lib/config";
 import { tenantsByInstallation } from "@/lib/tenants";
 import { DocsRepoForm } from "./docs-repo-form";
@@ -65,75 +66,68 @@ export default async function InstallationsPage() {
   const fallback = fallbackDocsRepo() ?? null;
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-8">
-      <header className="mb-8 flex items-baseline justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">インストール</h1>
-          <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-            spec-bridge が読めるリポジトリです。ここに無いリポジトリは解析できません。
+    <>
+      <SiteNav current="installations" login={session.login} />
+      <main className="mx-auto max-w-4xl px-6 py-8">
+        <header className="mb-8 flex items-baseline justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">インストール</h1>
+            <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+              spec-bridge が読めるリポジトリです。ここに無いリポジトリは解析できません。
+            </p>
+          </div>
+        </header>
+
+        {error && (
+          <div className="mb-6 rounded-lg border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-400">
+            {error}
+          </div>
+        )}
+
+        <ul className="space-y-4">
+          {items.map((installation) => (
+            <li
+              key={installation.id}
+              className="rounded-lg border p-4"
+              style={{ borderColor: "var(--border)", background: "var(--panel)" }}
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="font-medium">{installation.account}</span>
+                <span className="text-xs" style={{ color: "var(--muted)" }}>
+                  installation {installation.id} · 対象 {installation.repositorySelection} ·{" "}
+                  Contents: {installation.permissions["contents"] ?? "なし"} / Pull requests:{" "}
+                  {installation.permissions["pull_requests"] ?? "なし"}
+                </span>
+              </div>
+              <DocsRepoForm
+                installationId={installation.id}
+                account={installation.account}
+                current={tenants.get(installation.id)?.docsRepo ?? null}
+                fallback={fallback}
+              />
+
+              <ul className="mt-3 space-y-1">
+                {installation.repositories.map((repo) => (
+                  <li key={repo} className="text-sm">
+                    {repo}
+                  </li>
+                ))}
+                {installation.repositories.length === 0 && (
+                  <li className="text-xs" style={{ color: "var(--muted)" }}>
+                    リポジトリが選ばれていません
+                  </li>
+                )}
+              </ul>
+            </li>
+          ))}
+        </ul>
+
+        {items.length === 0 && !error && (
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            インストールがありません。GitHub App を対象リポジトリに追加してください。
           </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <a href="/runs" className="text-xs underline" style={{ color: "var(--muted)" }}>
-            ラン
-          </a>
-          <form action="/api/github/logout" method="post">
-          <button type="submit" className="text-xs underline" style={{ color: "var(--muted)" }}>
-              {session.login} · ログアウト
-            </button>
-          </form>
-        </div>
-      </header>
-
-      {error && (
-        <div className="mb-6 rounded-lg border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-400">
-          {error}
-        </div>
-      )}
-
-      <ul className="space-y-4">
-        {items.map((installation) => (
-          <li
-            key={installation.id}
-            className="rounded-lg border p-4"
-            style={{ borderColor: "var(--border)", background: "var(--panel)" }}
-          >
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="font-medium">{installation.account}</span>
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                installation {installation.id} · 対象 {installation.repositorySelection} ·{" "}
-                Contents: {installation.permissions["contents"] ?? "なし"} / Pull requests:{" "}
-                {installation.permissions["pull_requests"] ?? "なし"}
-              </span>
-            </div>
-            <DocsRepoForm
-              installationId={installation.id}
-              account={installation.account}
-              current={tenants.get(installation.id)?.docsRepo ?? null}
-              fallback={fallback}
-            />
-
-            <ul className="mt-3 space-y-1">
-              {installation.repositories.map((repo) => (
-                <li key={repo} className="text-sm">
-                  {repo}
-                </li>
-              ))}
-              {installation.repositories.length === 0 && (
-                <li className="text-xs" style={{ color: "var(--muted)" }}>
-                  リポジトリが選ばれていません
-                </li>
-              )}
-            </ul>
-          </li>
-        ))}
-      </ul>
-
-      {items.length === 0 && !error && (
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
-          インストールがありません。GitHub App を対象リポジトリに追加してください。
-        </p>
-      )}
-    </main>
+        )}
+      </main>
+    </>
   );
 }
