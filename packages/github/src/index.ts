@@ -74,3 +74,4 @@ export * from "./app-auth.ts";
 export * from "./docs-repo.ts";
 export * from "./webhook.ts";
 export * from "./checkout.ts";
+export * from "./docs-reader.ts";

@@ -33,7 +33,7 @@ export function sourceLabel(source: SourceRef): string {
   return source.line ? `${source.file}:${source.line}` : source.file;
 }
 
-/** docs リポジトリ上の、この機能ドキュメントの URL。提出先が分からなければ null */
-export function docFileUrl(docsRepo: string | undefined, id: string): string | null {
-  return docsRepo ? `https://github.com/${docsRepo}/blob/HEAD/features/${id}.md` : null;
+/** docs リポジトリ上の、この機能ドキュメントの URL */
+export function docFileUrl(docsRepo: string, id: string, ref = "HEAD"): string {
+  return `https://github.com/${docsRepo}/blob/${ref}/features/${id}.md`;
 }

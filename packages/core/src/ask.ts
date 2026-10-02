@@ -100,7 +100,12 @@ function docContext(docs: FeatureDoc[]): string {
 }
 
 export interface AskOptions {
-  docsPath: string;
+  /**
+   * 読み込み済みの機能ドキュメント。画面は GitHub の docs リポジトリから読んで渡す。
+   * 省略時は `docsPath` のディレクトリから読む（CLI とローカル開発）
+   */
+  docs?: FeatureDoc[];
+  docsPath?: string;
   model?: string;
   /** 絞り込みに使うモデル。省略時は軽量モデル */
   selectModel?: string;
@@ -116,11 +121,16 @@ export interface AskResult {
   narrowed: boolean;
 }
 
+async function loadFromPath(docsPath: string | undefined): Promise<FeatureDoc[]> {
+  if (!docsPath) throw new Error("機能ドキュメントの置き場所（docs か docsPath）が指定されていません");
+  return new DocStore(docsPath).list();
+}
+
 export async function askSupportQuestion(
   question: string,
   options: AskOptions,
 ): Promise<AskResult> {
-  const all = await new DocStore(options.docsPath).list();
+  const all = options.docs ?? (await loadFromPath(options.docsPath));
 
   if (all.length === 0) {
     return {
@@ -130,7 +140,7 @@ export async function askSupportQuestion(
         headline: "参照できる機能ドキュメントがありません。",
         answerForCustomer: "",
         explanation:
-          "指定されたディレクトリに機能ドキュメントが1件も見つかりませんでした。先に spec-bridge の解析を実行してください。",
+          "機能ドキュメントが1件も見つかりませんでした。先に spec-bridge で既存コードから書き起こしてください。",
         citations: [],
         devRequest: null,
         followUp: [],

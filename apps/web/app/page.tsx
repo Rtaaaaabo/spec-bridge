@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { DocStore } from "@spec-bridge/core";
+import type { FeatureDoc } from "@spec-bridge/core";
 import { currentSession } from "@/lib/auth";
-import { docsPath } from "@/lib/config";
+import { loadDocs, type DocsSource } from "@/lib/docs";
 import { buildSampleQuestions } from "@/lib/samples";
 import { STATUS_LABEL } from "@/lib/doc-view";
 import { AskPanel } from "./ask-panel";
@@ -15,11 +15,13 @@ export default async function Page() {
   const session = await currentSession();
   if (!session) redirect("/login");
 
-  let docs: Awaited<ReturnType<DocStore["list"]>> = [];
+  let docs: FeatureDoc[] = [];
+  let source: DocsSource | null = null;
+  let notices: string[] = [];
   let error: string | null = null;
 
   try {
-    docs = await new DocStore(docsPath()).list();
+    ({ docs, source, notices } = await loadDocs());
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
@@ -35,6 +37,15 @@ export default async function Page() {
           </p>
         </header>
 
+        {notices.map((notice) => (
+          <div
+            key={notice}
+            className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-500"
+          >
+            {notice}
+          </div>
+        ))}
+
         {error && (
           <div className="mb-6 rounded-lg border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-400">
             {error}
@@ -46,6 +57,25 @@ export default async function Page() {
             <h2 className="mb-3 text-xs font-semibold tracking-wide uppercase" style={{ color: "var(--muted)" }}>
               参照中の仕様（{docs.length}件）
             </h2>
+            {source && (
+              <p className="-mt-2 mb-3 text-[11px]" style={{ color: "var(--muted)" }}>
+                {source.kind === "github" ? (
+                  <>
+                    <a
+                      href={`https://github.com/${source.repo}/tree/${source.ref}/features`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      {source.repo}
+                    </a>
+                    （{source.ref}）から
+                  </>
+                ) : (
+                  <>ローカルの {source.path} から</>
+                )}
+              </p>
+            )}
             <ul className="space-y-2">
               {docs.map((doc) => {
                 const status = STATUS_LABEL[doc.meta.status];
