@@ -17,16 +17,16 @@ function ensureEnv(): void {
   if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
 }
 
-/** 機能ドキュメントの置き場所。SPEC_BRIDGE_DOCS_PATH で指定する */
-export function docsPath(): string {
+/**
+ * ローカルの機能ドキュメントの置き場所（`SPEC_BRIDGE_DOCS_PATH`）。未設定なら undefined。
+ *
+ * 画面は GitHub の docs リポジトリを読むのが既定（`lib/docs.ts`）。
+ * これは docs リポジトリが決まらないときの代わりで、主にローカル開発用。
+ */
+export function localDocsPath(): string | undefined {
   ensureEnv();
-  const raw = process.env.SPEC_BRIDGE_DOCS_PATH;
-  if (!raw) {
-    throw new Error(
-      "SPEC_BRIDGE_DOCS_PATH が設定されていません。spec-bridge/.env に機能ドキュメントのディレクトリを設定してください。",
-    );
-  }
-  return resolve(raw.replace(/^~(?=$|\/)/, homedir()));
+  const raw = process.env.SPEC_BRIDGE_DOCS_PATH?.trim();
+  return raw ? resolve(raw.replace(/^~(?=$|\/)/, homedir())) : undefined;
 }
 
 /**

@@ -1,13 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import {
-  DocStore,
   QUESTION_KIND_LABEL,
   QUESTION_KINDS,
   questionsOfKind,
   type SourceRef,
 } from "@spec-bridge/core";
 import { currentSession } from "@/lib/auth";
-import { docsPath, fallbackDocsRepo } from "@/lib/config";
+import { loadDoc } from "@/lib/docs";
 import { docFileUrl, sourceLabel, sourceUrl, STATUS_LABEL } from "@/lib/doc-view";
 import { SiteNav } from "../../site-nav";
 
@@ -72,13 +71,14 @@ export default async function DocPage({ params }: { params: Promise<{ id: string
   if (!session) redirect("/login");
 
   const { id } = await params;
-  // ID の検証は DocStore が行う（不正な ID は null になる）
-  const doc = await new DocStore(docsPath()).get(id);
-  if (!doc) notFound();
+  // 不正な ID は loadDoc が null にする
+  const loaded = await loadDoc(id);
+  if (!loaded) notFound();
 
-  const { meta, body, changelog } = doc;
+  const { meta, body, changelog } = loaded.doc;
   const status = STATUS_LABEL[meta.status];
-  const fileUrl = docFileUrl(fallbackDocsRepo(), meta.id);
+  const fileUrl =
+    loaded.source.kind === "github" ? docFileUrl(loaded.source.repo, meta.id, loaded.source.ref) : null;
 
   return (
     <>

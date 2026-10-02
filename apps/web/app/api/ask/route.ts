@@ -1,6 +1,6 @@
 import { askSupportQuestion } from "@spec-bridge/core";
 import { currentSession } from "@/lib/auth";
-import { docsPath } from "@/lib/config";
+import { loadDocs } from "@/lib/docs";
 
 // Agent SDK は Node のネイティブバイナリを使うので Edge では動かない
 export const runtime = "nodejs";
@@ -24,7 +24,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const result = await askSupportQuestion(question, { docsPath: docsPath() });
+    const { docs } = await loadDocs();
+    const result = await askSupportQuestion(question, { docs });
     return Response.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
