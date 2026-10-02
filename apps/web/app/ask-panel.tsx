@@ -103,14 +103,14 @@ export function AskPanel({ samples }: { samples: string[] }) {
     <section className="space-y-5">
       <Panel>
         <label htmlFor="q" className="mb-2 block text-sm font-medium">
-          問い合わせ内容
+          知りたいこと
         </label>
         <textarea
           id="q"
           rows={4}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="お客様からの問い合わせをそのまま貼り付けてください"
+          placeholder="仕様について知りたいことや、お客様からの問い合わせをそのまま貼り付けてください"
           className="w-full resize-y rounded-lg border bg-transparent p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
           style={{ borderColor: "var(--border)" }}
         />

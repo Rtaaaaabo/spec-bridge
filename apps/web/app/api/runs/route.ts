@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { DEFAULT_BUDGET_USD, surveyJob, type BackfillRun } from "@spec-bridge/backfill";
+import {
+  DEFAULT_BUDGET_USD,
+  DEFAULT_FEATURE_LIMIT,
+  surveyJob,
+  type BackfillRun,
+} from "@spec-bridge/backfill";
 import {
   installationIdForRepo,
   parseRepoFullName,
@@ -25,6 +30,9 @@ interface StartRunBody {
  *
  * **お金を使う操作なので、予算を必ず持たせる。** 画面から気軽に押せるぶん、
  * 上限の無いランを作れてはいけない（1機能 約 $1.7）。
+ *
+ * 画面からは機能数も予算も送らない（利用者に原価の話をさせない）。
+ * 指定が無ければサーバーの既定値で上限をかける。CLI などから明示した値は従来どおり使う。
  */
 export async function POST(request: Request): Promise<Response> {
   if (!(await currentSession())) {
@@ -39,7 +47,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const repo = typeof body.repo === "string" ? body.repo.trim() : "";
-  const limit = Number(body.limit ?? 5);
+  const limit = Number(body.limit ?? DEFAULT_FEATURE_LIMIT);
   const budgetUsd = Number(body.budgetUsd ?? DEFAULT_BUDGET_USD);
 
   if (!repo.includes("/")) {
