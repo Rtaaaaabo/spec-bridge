@@ -15,3 +15,4 @@ export * from "./ask.ts";
 export * from "./survey.ts";
 export * from "./usage.ts";
 export * from "./questions.ts";
+export * from "./verify.ts";

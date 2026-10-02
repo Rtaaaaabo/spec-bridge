@@ -109,34 +109,41 @@ export class DocStore {
    */
   async writeIndexPage(): Promise<string> {
     const docs = await this.list();
-    const counts = countQuestions(docs);
-
-    // 一覧に出す件数は「聞くべきこと」だけ。調べれば埋まるものまで数えると、人に聞く量を水増しして見せる
-    const rows = docs.map((d) => {
-      const ask = questionsOfKind(d.body.openQuestions, "intent").length;
-      return `| [${d.body.title}](features/${d.meta.id}.md) | ${STATUS_BADGE[d.meta.status]} | ${ask > 0 ? `${ask} 件` : "—"} | ${d.meta.repos.map((r) => `\`${r}\``).join(", ")} | ${d.meta.updatedAt} |`;
-    });
-    const content = [
-      "# 機能仕様インデックス",
-      "",
-      // バックフィルで作られたドキュメントは PR に紐づかないので「PR から」とは書けない
-      "spec-bridge がソースコードから自動生成・更新しています。",
-      "`📝 AI生成` は未レビューです — 顧客への回答に使う前に開発者の確認を取ってください。",
-      "",
-      `コードを読んだうえで人に確かめるしかない点は [開発者への確認事項](${QUESTIONS_PAGE}) にまとめています` +
-        `（聞くべきこと ${counts.intent} 件。ほかに追加調査 ${counts.unverified} 件・範囲のメモ ${counts.scope} 件）。`,
-      "",
-      "| 機能 | ステータス | 聞くべきこと | リポジトリ | 最終更新 |",
-      "| --- | --- | --- | --- | --- |",
-      ...rows,
-      "",
-    ].join("\n");
     await mkdir(this.root, { recursive: true });
     const path = join(this.root, INDEX_PAGE);
-    await writeFile(path, content, "utf8");
+    await writeFile(path, renderIndexPage(docs), "utf8");
     await writeFile(join(this.root, QUESTIONS_PAGE), renderQuestionsPage(docs), "utf8");
     return path;
   }
+}
+
+/**
+ * 一覧ページ（README）の中身。ローカルに書くとき（`writeIndexPage`）と、
+ * GitHub の docs リポジトリへ直接コミットするとき（画面からのレビュー）で同じものを使う。
+ */
+export function renderIndexPage(docs: FeatureDoc[]): string {
+  const counts = countQuestions(docs);
+
+  // 一覧に出す件数は「聞くべきこと」だけ。調べれば埋まるものまで数えると、人に聞く量を水増しして見せる
+  const rows = docs.map((d) => {
+    const ask = questionsOfKind(d.body.openQuestions, "intent").length;
+    return `| [${d.body.title}](features/${d.meta.id}.md) | ${STATUS_BADGE[d.meta.status]} | ${ask > 0 ? `${ask} 件` : "—"} | ${d.meta.repos.map((r) => `\`${r}\``).join(", ")} | ${d.meta.updatedAt} |`;
+  });
+  return [
+    "# 機能仕様インデックス",
+    "",
+    // バックフィルで作られたドキュメントは PR に紐づかないので「PR から」とは書けない
+    "spec-bridge がソースコードから自動生成・更新しています。",
+    "`📝 AI生成` は未レビューです — 顧客への回答に使う前に開発者の確認を取ってください。",
+    "",
+    `コードを読んだうえで人に確かめるしかない点は [開発者への確認事項](${QUESTIONS_PAGE}) にまとめています` +
+      `（聞くべきこと ${counts.intent} 件。ほかに追加調査 ${counts.unverified} 件・範囲のメモ ${counts.scope} 件）。`,
+    "",
+    "| 機能 | ステータス | 聞くべきこと | リポジトリ | 最終更新 |",
+    "| --- | --- | --- | --- | --- |",
+    ...rows,
+    "",
+  ].join("\n");
 }
 
 function countQuestions(docs: FeatureDoc[]): Record<QuestionKind, number> {

@@ -83,6 +83,19 @@ export async function loadDocs(): Promise<LoadedDocs> {
   return value;
 }
 
+/**
+ * 画面が読み書きする docs リポジトリ。`loadDocs` と同じ決め方。
+ * 1つも決まらなければ null（ローカルのディレクトリを使う）
+ */
+export async function viewerDocsRepo(): Promise<string | null> {
+  return (await docsRepoCandidates())[0] ?? null;
+}
+
+/** 書き込んだあとに呼ぶ。次に開いたときに、書いた内容が見えるようにする */
+export function invalidateDocsCache(repo: string): void {
+  cache.delete(repo);
+}
+
 /** 1件だけ。一覧と同じ読み方（同じキャッシュ）を通す */
 export async function loadDoc(id: string): Promise<{ doc: FeatureDoc; source: DocsSource } | null> {
   if (!isValidDocId(id)) return null;
