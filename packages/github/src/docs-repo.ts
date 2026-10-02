@@ -89,6 +89,14 @@ async function branchHeadSha(
   }
 }
 
+/** 読んでから書き戻すまでの間に、ブランチへ別のコミットが積まれた */
+export class BranchMovedError extends Error {
+  constructor(branch: string) {
+    super(`${branch} が、読み込んだあとに更新されています。開き直してから、もう一度試してください。`);
+    this.name = "BranchMovedError";
+  }
+}
+
 export interface CommitResult {
   branch: string;
   commitSha: string;
@@ -108,7 +116,17 @@ export interface CommitResult {
  */
 export async function commitFilesToBranch(
   target: DocsRepoTarget,
-  options: { branch: string; files: PublishFile[]; message: string },
+  options: {
+    branch: string;
+    files: PublishFile[];
+    message: string;
+    /**
+     * ブランチの先端がこのコミットのときだけ積む。読んだ内容をもとに書き戻すときに渡す。
+     * 読んでから誰かが積んでいたら、その変更を黙って上書きしないよう `BranchMovedError` を投げる。
+     * （確かめたあと ref を進めるまでの間に積まれた場合は、`updateRef` が早送りでないため失敗する）
+     */
+    expectedHead?: string;
+  },
   octokit: Octokit,
 ): Promise<CommitResult> {
   if (options.files.length === 0) {
@@ -117,6 +135,9 @@ export async function commitFilesToBranch(
   const { owner, repo } = target;
 
   let head = await branchHeadSha(octokit, owner, repo, options.branch);
+  if (options.expectedHead && head !== options.expectedHead) {
+    throw new BranchMovedError(options.branch);
+  }
   const createdBranch = head === null;
 
   if (head === null) {

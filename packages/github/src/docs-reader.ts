@@ -12,6 +12,11 @@ export interface ReadDocsResult {
   docs: FeatureDoc[];
   /** 読んだ ref（既定ブランチ名） */
   ref: string;
+  /**
+   * 読んだ時点のコミット。書き戻すときに「読んでから誰も積んでいない」ことを確かめるのに使う。
+   * 空のリポジトリでは null
+   */
+  commitSha: string | null;
   /** FeatureDoc として読めなかったファイル。手で壊された可能性がある */
   skipped: string[];
 }
@@ -31,11 +36,15 @@ export async function readDocsFromRepo(octokit: Octokit, repo: string): Promise<
   const ref = info.default_branch;
 
   let entries: { path: string; sha: string }[];
+  let commitSha: string;
   try {
+    // ブランチ名ではなくコミットで引く。読んだものと、書き戻すときの起点を一致させるため
+    const { data: head } = await octokit.rest.git.getRef({ owner, repo: name, ref: `heads/${ref}` });
+    commitSha = head.object.sha;
     const { data: tree } = await octokit.rest.git.getTree({
       owner,
       repo: name,
-      tree_sha: ref,
+      tree_sha: commitSha,
       recursive: "true",
     });
     entries = tree.tree
@@ -44,7 +53,7 @@ export async function readDocsFromRepo(octokit: Octokit, repo: string): Promise<
   } catch (error) {
     // 空のリポジトリ（コミットが1つも無い）はツリーが引けない。まだ何も書いていないだけ
     if ((error as { status?: number }).status === 409 || (error as { status?: number }).status === 404) {
-      return { docs: [], ref, skipped: [] };
+      return { docs: [], ref, commitSha: null, skipped: [] };
     }
     throw error;
   }
@@ -73,5 +82,5 @@ export async function readDocsFromRepo(octokit: Octokit, repo: string): Promise<
   }
 
   docs.sort((a, b) => a.meta.id.localeCompare(b.meta.id));
-  return { docs, ref, skipped };
+  return { docs, ref, commitSha, skipped };
 }

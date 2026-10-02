@@ -9,6 +9,7 @@ import { currentSession } from "@/lib/auth";
 import { loadDoc } from "@/lib/docs";
 import { docFileUrl, sourceLabel, sourceUrl, STATUS_LABEL } from "@/lib/doc-view";
 import { SiteNav } from "../../site-nav";
+import { VerifyButton } from "./verify-button";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,6 +80,11 @@ export default async function DocPage({ params }: { params: Promise<{ id: string
   const status = STATUS_LABEL[meta.status];
   const fileUrl =
     loaded.source.kind === "github" ? docFileUrl(loaded.source.repo, meta.id, loaded.source.ref) : null;
+  // 誰がいつレビューしたか。画面から押すと変更履歴に「@login がレビュー済にした」が積まれる
+  const verifiedBy =
+    meta.status === "verified"
+      ? [...changelog].reverse().find((entry) => entry.summary.endsWith("がレビュー済にした"))
+      : undefined;
 
   return (
     <>
@@ -105,20 +111,31 @@ export default async function DocPage({ params }: { params: Promise<{ id: string
           className="mt-6 rounded-lg border p-4 text-sm"
           style={{ borderColor: "var(--border)", background: "var(--panel)" }}
         >
-          <p>{status.hint}</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p>{status.hint}</p>
+              {verifiedBy && (
+                <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+                  {verifiedBy.date} · {verifiedBy.summary}
+                </p>
+              )}
+            </div>
+            {fileUrl && (
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs underline"
+                style={{ color: "var(--muted)" }}
+              >
+                docs リポジトリで見る
+              </a>
+            )}
+          </div>
           {meta.status !== "verified" && (
-            <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
-              内容を確かめたら、docs リポジトリの{" "}
-              {fileUrl ? (
-                <a href={fileUrl} target="_blank" rel="noreferrer" className="font-mono underline">
-                  features/{meta.id}.md
-                </a>
-              ) : (
-                <code className="font-mono">features/{meta.id}.md</code>
-              )}{" "}
-              の先頭にある <code className="font-mono">status: draft</code> を{" "}
-              <code className="font-mono">status: verified</code> に変えてください。
-            </p>
+            <div className="mt-3">
+              <VerifyButton id={meta.id} />
+            </div>
           )}
         </div>
 

@@ -42,8 +42,13 @@ function fakeOctokit(files: Record<string, string>, options: { treeStatus?: numb
     rest: {
       repos: { get: async () => ({ data: { default_branch: "main" } }) },
       git: {
-        getTree: async () => {
+        getRef: async () => {
           if (options.treeStatus) throw Object.assign(new Error("tree"), { status: options.treeStatus });
+          return { data: { object: { sha: "c0ffee" } } };
+        },
+        getTree: async ({ tree_sha }: { tree_sha: string }) => {
+          // ブランチ名ではなく、getRef で引いたコミットからツリーを取る
+          assert.equal(tree_sha, "c0ffee");
           return {
             data: {
               tree: [
@@ -72,6 +77,7 @@ test("features/ 直下の機能ドキュメントを読み、ID 順に返す", a
   });
   const result = await readDocsFromRepo(octokit, "acme/specs");
   assert.equal(result.ref, "main");
+  assert.equal(result.commitSha, "c0ffee", "書き戻すときの起点に使う");
   assert.deepEqual(
     result.docs.map((d) => d.meta.id),
     ["a-feature", "b-feature"],
