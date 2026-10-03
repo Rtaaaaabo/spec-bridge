@@ -14,10 +14,9 @@ cp .env.example .env
 | Command | What it does |
 | --- | --- |
 | `pnpm test` | Tests — no LLM calls, so they're fast and free |
-| `pnpm typecheck` | Type checking across core / cli / web |
+| `pnpm typecheck` | Type checking across packages / cli / webhook |
 | `pnpm check-auth` | Verify GitHub credentials (no LLM calls, free) |
 | `pnpm analyze --pr <PR> --repo <path> --docs <path>` | Analyze a single pull request |
-| `pnpm web` | The support desk UI |
 | `pnpm webhook` / `pnpm worker` | Receive webhooks / run queued jobs (needs `DATABASE_URL`) |
 | `pnpm backfill-run --repo <org/repo>` | Enqueue a backfill as one job per feature |
 | `pnpm webhook` | The GitHub App webhook server |
@@ -97,19 +96,6 @@ differ per tenant, that means *acting as a different tenant*.
   docs repository can be separate installations, and therefore separate tokens
 - Half-configured App credentials (an ID with no key, or the reverse) fail at startup rather than falling
   back to the PAT. "I configured the App but it was really running on the PAT" is invisible to operators
-
-### 7. Pages and API routes must call `currentSession()`
-
-`apps/web/proxy.ts` (called middleware before Next 16) only checks whether a session cookie is **present** — the edge runtime cannot read
-the repository-root `.env`, so it cannot hold the signing key. **The authentication is
-`currentSession()` (`apps/web/lib/auth.ts`) on the server.**
-
-Call it at the top of every new page and route handler. One route that forgets is one route that serves
-feature documents to anyone.
-
-`currentSession()` verifies the signature **and** consults the allowlist
-(`SPEC_BRIDGE_ALLOWED_LOGINS`) on every request. Sessions last 12 hours, so checking the list only at
-sign-in would let a removed account stay in for the rest of the day.
 
 ## Testing policy
 

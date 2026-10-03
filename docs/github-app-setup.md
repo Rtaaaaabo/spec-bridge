@@ -172,38 +172,6 @@ It checks four things:
 > from "no such repository". If you see a 404, check the fine-grained PAT's selected repositories, or where
 > the App is installed.
 
-## 3.5 Set up sign-in for the web UI (optional)
-
-`apps/web` (the support desk and the installations page) **requires sign-in**. It uses the GitHub App's
-user-to-server OAuth, so no second app is needed.
-
-1. In the App settings (General), under **Identifying and authorizing users**, set the **Redirect URI** (formerly Callback URL):
-
-   ```
-   http://localhost:3000/api/github/callback
-   ```
-
-2. Copy the **Client ID** from the same page and click **Generate a new client secret**
-3. Add to `.env`:
-
-   ```bash
-   SPEC_BRIDGE_SESSION_SECRET=<output of openssl rand -hex 32>
-   GITHUB_APP_CLIENT_ID=<client id>
-   GITHUB_APP_CLIENT_SECRET=<client secret>
-   # GitHub accounts allowed to sign in (comma separated). Unset means nobody
-   SPEC_BRIDGE_ALLOWED_LOGINS=<your GitHub username>
-   # if the UI is served somewhere other than localhost (https adds Secure to the cookie)
-   # SPEC_BRIDGE_BASE_URL=https://specs.example.com
-   ```
-
-4. Run `pnpm web` and open http://localhost:3000/ (you land on `/login` when signed out)
-
-> ⚠️ With `SPEC_BRIDGE_SESSION_SECRET` or `SPEC_BRIDGE_ALLOWED_LOGINS` unset, the UI lets **nobody** in
-> rather than everybody: a session that cannot be verified is a session anyone could forge, and an empty
-> allowlist is safer than an open door.
-
-The session cookie carries only the GitHub user identity — **the access token is never stored**.
-
 ## 4. Make localhost reachable
 
 GitHub cannot reach your machine directly, so open a tunnel.

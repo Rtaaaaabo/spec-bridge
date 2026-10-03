@@ -15,26 +15,17 @@ There are plenty of tools that help *developers* understand a codebase. This one
 - **It refuses to answer without evidence.** Claims that can't cite a source never make it into the docs,
   and answers that can't cite a source are forced to "can't determine" by the system — not by the prompt.
 
-## The support desk
+## The UI lives in the hosted version (Askless)
 
-Support pastes in a customer inquiry. The answer is grounded only in the generated feature specs.
+The screen that answers inquiries grounded only in the generated specs (verdict, customer-ready reply,
+citations down to `file:line`), and the screens for reviewing docs and managing backfills, are offered in
+the hosted version, **Askless**.
 
-![Verdict "matches the spec", a customer-ready reply, and three citations with file and line numbers](docs/screenshot.png)
+This repository (OSS) covers everything **up to writing cited feature specs into your docs repository**.
+The CLI and the webhook alone keep those specs accumulating in a repository you own.
 
-You get a verdict, a reply you can send to the customer as-is, an internal note explaining the reasoning,
-**citations down to `file:line`**, and anything worth confirming with engineering. If the underlying doc is
-still unreviewed (`draft`), that warning is attached automatically.
-
-### No evidence, no answer
-
-![Verdict "can't determine" with zero citations and no customer-facing reply](docs/screenshot-unknown.png)
-
-For vague inquiries, or topics the docs simply don't cover, it returns **"can't determine" and generates
-no customer-facing reply at all**. If the model asserts something without citing a source, the system
-overwrites the verdict rather than trusting it.
-
-A support agent relaying a confidently wrong AI answer to a customer is the failure mode this project
-is built to prevent.
+The verdict logic that answers "can't determine" without evidence (`packages/core/src/ask.ts`) lives here
+too: if the model asserts something without citing a source, the system — not the prompt — overrides it.
 
 ## Three design decisions
 
@@ -220,20 +211,6 @@ source pull request, the body states **which commit the documents were written f
 **surveyed / generated / failed** counts, elapsed time, and estimated cost. If the working tree has
 uncommitted changes, no origin commit is stated — that SHA would not be an honest origin.
 
-#### Watching and starting runs from the UI
-
-`pnpm web` serves `/runs`, a list of backfill runs. The point is that **cost and "did it finish?" are
-visible**: a run cut short by its budget is shown as such, not as "done".
-
-| Shown | |
-| --- | --- |
-| Progress | `3 / 8 features` ("surveying…" before the survey completes) |
-| Cost | Spend so far, against that run's cap |
-| Outcome | Link to the submitted pull request, failure count, last error |
-| Recent PR analyses | What the webhook enqueued — the place to look when a merge seems to do nothing |
-
-Runs can also be started from that page (target repository, feature cap, budget).
-
 #### Running it as jobs (split per feature)
 
 `pnpm backfill` processes every feature in one local run. Each feature takes minutes and can hit the
@@ -261,21 +238,6 @@ cited. Checking that `file:line` exists (`sourceValidity`) cannot catch a citati
 agent never read.
 
 Change history entries carry no pull-request reference, so no fictitious PR numbers are created.
-
-### Run the support desk
-
-```bash
-pnpm web
-```
-
-| Output | Contents |
-| --- | --- |
-| Verdict | `matches spec` / `possible bug` / `can't determine` |
-| Customer reply | Plain, jargon-free wording you can send as-is (with a copy button) |
-| Internal note | Why the verdict was reached |
-| Citations | Quotes from the docs plus source file paths |
-| Engineering request | Only for bug verdicts. Detailed enough to file directly |
-| To confirm | Open questions from the doc, plus a warning if the doc is still `draft` |
 
 ## Narrowing as the corpus grows
 
@@ -370,17 +332,13 @@ Over the webhook, `SPEC_BRIDGE_PR_BUDGET_USD` (default $10) cuts the run short; 
 picks up where it stopped. The cap is checked before each feature starts, so the total can exceed it by
 one feature's cost.
 
-Where documents are submitted is configured **per installation** (in the UI at `/installations`).
+Where documents are submitted can be set **per installation** (the `installations` tenant table).
 Installations without a setting fall back to `SPEC_BRIDGE_DOCS_REPO`, so a single organisation can run on
 the environment variable alone.
 
 Setup (creating the GitHub App, permissions, tunneling to localhost) is documented in
-[docs/github-app-setup.md](docs/github-app-setup.md); running it continuously on Fly.io is covered in
-[docs/deploy.md](docs/deploy.md). API calls authenticate with App installation access
+[docs/github-app-setup.md](docs/github-app-setup.md). API calls authenticate with App installation access
 tokens (recommended) or with a PAT.
-
-The design for running this as a service (job splitting, per-tenant credentials, generalized submission)
-is recorded in [docs/saas-plan.ja.md](docs/saas-plan.ja.md) (Japanese).
 
 ## Multiple repositories
 
@@ -433,7 +391,7 @@ anything, so `READ_ONLY_DENY_LIST` in `agent.ts` removes these explicitly:
 | `WebFetch` / `WebSearch` | Never send source code to an external service |
 | `Bash` | Denied by default; allowed only with `--allow-bash` |
 
-The support desk agent gets **no tools at all**, including read-only ones. It can only see the documents it
+The agent that answers questions gets **no tools at all**, including read-only ones. It can only see the documents it
 was handed, so "the model went and read the code and guessed" cannot happen structurally.
 
 See [SECURITY.md](SECURITY.md) for the full security model and reporting process.
@@ -457,7 +415,6 @@ packages/core/          the analysis pipeline
   pr-body.ts            builds the docs-repo pull request description
 packages/github/        PR retrieval, docs-repo PRs, webhook verification, shallow checkout
 apps/cli/               command line interface
-apps/web/               support desk UI (Next.js)
 apps/webhook/           GitHub App webhook receiver (Hono)
 ```
 
@@ -465,7 +422,7 @@ apps/webhook/           GitHub App webhook receiver (Hono)
 
 ```bash
 pnpm test        # fast and free — no LLM calls
-pnpm typecheck   # core / cli / web
+pnpm typecheck   # packages / cli / webhook
 ```
 
 Tests cover the parts that **don't depend on model output**: deterministic Markdown rendering, removal of
@@ -479,7 +436,7 @@ project maintains.
 
 | Phase | Scope |
 | --- | --- |
-| 0 (current) | PR → feature docs, backfill from existing code, CLI + support desk UI |
+| 0 (current) | PR → feature docs, backfill from existing code, CLI, webhook and worker (the UI is the hosted Askless) |
 | 1 | GitHub App webhooks, automatic PRs to the docs repository |
 | 2 | Filing to issue trackers, feedback loop from unanswered questions |
 | 3 | Impact analysis, screen flow diagrams, E2E test generation |

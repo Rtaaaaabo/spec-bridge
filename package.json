@@ -10,9 +10,8 @@
     "analyze": "tsx apps/cli/src/index.ts analyze",
     "backfill": "tsx apps/cli/src/index.ts backfill",
     "check-auth": "tsx apps/cli/src/index.ts check-auth",
-    "web": "pnpm --filter @spec-bridge/web dev",
     "test": "tsx --test \"packages/**/*.test.ts\" \"apps/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm --filter @spec-bridge/web exec tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "webhook": "pnpm --filter @spec-bridge/webhook dev",
     "worker": "pnpm --filter @spec-bridge/webhook worker",
     "backfill-run": "pnpm --filter @spec-bridge/webhook backfill-run"

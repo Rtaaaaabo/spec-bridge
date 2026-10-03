@@ -14,7 +14,7 @@ body:
       label: どこで起きましたか
       options:
         - CLI（PR の解析）
-        - CX サポートデスク画面
+        - webhook / worker（PR の自動追従・書き起こし）
         - 生成されたドキュメントの内容
         - その他
     validations:
