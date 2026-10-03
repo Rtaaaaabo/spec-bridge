@@ -13,21 +13,39 @@ export const Citation = z.object({
 });
 export type Citation = z.infer<typeof Citation>;
 
-export const Verdict = z.enum(["spec", "bug", "unknown"]);
+/**
+ * 答えにどこまで根拠があるか。
+ *
+ * - `answered`: 質問に、ドキュメントの記述だけで答えられた
+ * - `partial`: 一部だけ答えられた。分からなかったところは `unknowns` に出す
+ * - `unknown`: ドキュメントからは答えられない。**答えを作らない**
+ */
+export const Grounding = z.enum(["answered", "partial", "unknown"]);
+export type Grounding = z.infer<typeof Grounding>;
+
+/**
+ * 質問が「こう動いているが、これは正しいか」という挙動の報告だったときだけ付ける判定。
+ * 「この機能はどう動く？」のような説明を求める質問には付けない（null）。
+ */
+export const Verdict = z.enum(["spec", "bug"]);
 export type Verdict = z.infer<typeof Verdict>;
 
 export const AskAnswer = z.object({
-  verdict: Verdict.describe(
-    "spec=仕様どおり / bug=仕様と異なる挙動の可能性 / unknown=ドキュメントからは判断できない",
-  ),
+  grounding: Grounding,
+  verdict: Verdict.nullable()
+    .default(null)
+    .describe("挙動の報告のときだけ。spec=仕様どおり / bug=仕様と食い違う。それ以外は null"),
   confidence: z.number().min(0).max(1),
   headline: z.string().describe("結論を1文で"),
-  answerForCustomer: z
+  answer: z
     .string()
     .default("")
-    .describe("顧客にそのまま返せる文面。敬語・専門用語なし。unknown のときは空"),
-  explanation: z.string().describe("CS 向けの内部説明。なぜその判断になるか"),
+    .describe("質問への答え。コードを書いていない人が読んで分かる言葉で。grounding が unknown なら空"),
   citations: z.array(Citation).default([]),
+  unknowns: z
+    .array(z.string())
+    .default([])
+    .describe("ドキュメントからは分からなかったこと。コードを書いた人に確かめる候補"),
   devRequest: z
     .object({
       title: z.string(),
@@ -35,49 +53,49 @@ export const AskAnswer = z.object({
     })
     .nullable()
     .default(null)
-    .describe("bug のときだけ。開発チームへの依頼文"),
-  followUp: z
-    .array(z.string())
-    .default([])
-    .describe("開発チームに確認すべきこと"),
+    .describe("verdict が bug のときだけ。開発チームへの依頼文"),
 });
 export type AskAnswer = z.infer<typeof AskAnswer>;
 
-const SYSTEM = `あなたはカスタマーサポート（CX）チームの一次請け担当です。
-社内の機能仕様ドキュメントだけを根拠に、顧客からの問い合わせに答えます。
+const SYSTEM = `あなたは、あるプロダクトの機能仕様ドキュメントを読んで質問に答える担当です。
+質問するのは**このコードを書いていない人**です（引き継いだ人、外から入って調べている人、サポートや QA の人など）。
+機能仕様ドキュメントだけを根拠に答えます。
 
 # 最重要のルール
-1. **仕様ドキュメントに書かれていないことは答えない。** あなたの一般的な知識や推測で埋めてはいけない。
-   ドキュメントに根拠がなければ verdict を "unknown" にして、正直に「このドキュメントからは判断できない」と言う。
-   間違った回答が顧客に伝わることが、このシステムで最も避けたい事故です。
-2. **すべての判断に出典を付ける。** citations には、根拠にしたドキュメントの該当箇所を引用する。
-   citations が空になる回答は "unknown" 以外にしてはいけない。
-3. **verdict の判断基準**
-   - "spec": 顧客が報告している挙動が、ドキュメントに書かれた仕様どおりである
-   - "bug": ドキュメントに書かれた仕様と、顧客が報告している挙動が食い違っている
-   - "unknown": ドキュメントに該当する記述がない、または情報が足りず判断できない
-4. **answerForCustomer は顧客にそのまま送れる文面にする。** 敬語で、コードの識別子（\`CUSTOM\` や関数名など）や
-   ファイルパスは出さない。ドキュメントの「用語」表に別の呼ばれ方があれば、顧客が使っている言葉に合わせる。
-   verdict が "unknown" のときは answerForCustomer を空文字にする（回答してはいけないため）。
-5. **explanation は CS 向けの内部メモ。** なぜその判断になるのか、どこに書いてあるのかを簡潔に。
+1. **ドキュメントに書かれていないことは答えない。** 一般的な知識や推測で埋めてはいけない。
+   - ドキュメントで答えられる → grounding を "answered"
+   - 一部だけ答えられる → "partial"。答えられた部分だけを answer に書き、分からなかったことを unknowns に挙げる
+   - 答えられない → "unknown"。answer は空文字にして、何が分からないかを unknowns に挙げる
+   根拠のない答えが、そのまま他の人に伝わることが、このシステムで最も避けたい事故です。
+2. **すべての答えに出典を付ける。** citations には、根拠にしたドキュメントの該当箇所を引用する。
+   citations が空なら grounding は "unknown" にする。
+3. **answer は、コードを書いていない人が読んで分かる言葉で書く。** 結論を先に書き、
+   コードの識別子やファイルパスは必要なときだけ添える（出典は citations に入れる）。
+   ドキュメントの「用語」表に別の呼ばれ方があれば、質問者が使っている言葉に合わせる。
+4. **コードから分からない事実を書かない。** 利用状況・問い合わせの多さ・今後の予定・誰が決めたかなどは、
+   ドキュメントに書いてあっても推測を足さず、書いてある範囲だけを答える。
+5. **verdict は、質問が挙動の報告のときだけ付ける。**
+   「〜したら〜になった。これは正しい？」のように、起きた挙動が仕様どおりかを問われたときに
+   - "spec": ドキュメントに書かれた仕様どおり
+   - "bug": ドキュメントに書かれた仕様と食い違っている
+   「〜はどう動く？」「〜できる？」のような説明を求める質問では null にする。
 6. **verdict が "bug" のときは devRequest を必ず埋める。** 開発チームがそのまま起票できる粒度で、
    「何が起きているか」「ドキュメント上の期待挙動」「関連しそうなファイル」を書く。
-7. ドキュメントの「開発者への確認事項」に関係する内容が問い合わせに含まれていたら、followUp に入れる。
-   ステータスが draft（AI生成・未レビュー）のドキュメントを根拠にした場合も、その旨を followUp に入れる。
+7. 質問に関係する「開発者への確認事項」がドキュメントにあれば、それも unknowns に入れる。
 
 # 出力
 以下の JSON をひとつだけ \`\`\`json フェンス付きコードブロックで返すこと。解説文は不要。
 
 \`\`\`json
 {
-  "verdict": "spec" | "bug" | "unknown",
+  "grounding": "answered" | "partial" | "unknown",
+  "verdict": null | "spec" | "bug",
   "confidence": 0.0〜1.0,
   "headline": "結論を1文で",
-  "answerForCustomer": "顧客にそのまま返せる文面（unknown なら空文字）",
-  "explanation": "CS 向けの内部説明",
+  "answer": "質問への答え（unknown なら空文字）",
   "citations": [{ "docId": "...", "docTitle": "...", "quote": "ドキュメントからの引用", "file": "path/to/file.ts" }],
-  "devRequest": null または { "title": "...", "body": "..." },
-  "followUp": ["開発に確認すべきこと"]
+  "unknowns": ["ドキュメントからは分からなかったこと"],
+  "devRequest": null または { "title": "...", "body": "..." }
 }
 \`\`\``;
 
@@ -111,8 +129,20 @@ export interface AskOptions {
   selectModel?: string;
 }
 
+/** 答えの根拠にした機能のうち、人がまだ確かめていないもの */
+export interface UnreviewedSource {
+  docId: string;
+  title: string;
+  status: FeatureDoc["meta"]["status"];
+}
+
 export interface AskResult {
   answer: AskAnswer;
+  /**
+   * 根拠にした機能のうち、未レビュー（AI生成のまま・要更新）のもの。
+   * **LLM に書かせず、出典とドキュメントの状態から機械的に出す**（言い忘れが起きないように）
+   */
+  unreviewed: UnreviewedSource[];
   /** 参照できたドキュメントの総数 */
   docCount: number;
   /** 実際に全文を読み込んだ件数 */
@@ -126,25 +156,75 @@ async function loadFromPath(docsPath: string | undefined): Promise<FeatureDoc[]>
   return new DocStore(docsPath).list();
 }
 
-export async function askSupportQuestion(
-  question: string,
-  options: AskOptions,
-): Promise<AskResult> {
+function noAnswer(headline: string, unknowns: string[]): AskAnswer {
+  return {
+    grounding: "unknown",
+    verdict: null,
+    confidence: 0,
+    headline,
+    answer: "",
+    citations: [],
+    unknowns,
+    devRequest: null,
+  };
+}
+
+/**
+ * LLM の答えを、**システム側の約束**に合わせる。プロンプトに頼らず、ここで強制する。
+ *
+ * - 出典が無いのに答えていたら、答えを捨てて `unknown` に落とす（根拠なしで断定させない）
+ * - `unknown` なら答え・判定・起票文を空にする
+ * - 判定が `bug` でなければ起票文は付けない
+ * - 根拠にした機能のうち未レビューのものを、ドキュメントの状態から出す
+ */
+export function finalizeAnswer(
+  answer: AskAnswer,
+  docs: FeatureDoc[],
+): { answer: AskAnswer; unreviewed: UnreviewedSource[] } {
+  let result = answer;
+  if (result.citations.length === 0 && result.grounding !== "unknown") {
+    result = {
+      ...result,
+      grounding: "unknown",
+      confidence: 0,
+      unknowns: [
+        ...result.unknowns,
+        "出典を示せない答えだったため、システム側で「答えられない」に変更しました。コードを書いた人に確かめてください。",
+      ],
+    };
+  }
+  if (result.grounding === "unknown") {
+    result = { ...result, answer: "", verdict: null, devRequest: null };
+  }
+  if (result.verdict !== "bug" && result.devRequest !== null) {
+    result = { ...result, devRequest: null };
+  }
+
+  const byId = new Map(docs.map((doc) => [doc.meta.id, doc]));
+  const cited = [...new Set(result.citations.map((c) => c.docId))];
+  const unreviewed = cited
+    .map((id) => byId.get(id))
+    .filter((doc): doc is FeatureDoc => doc !== undefined && doc.meta.status !== "verified")
+    .map((doc) => ({ docId: doc.meta.id, title: doc.body.title, status: doc.meta.status }));
+
+  return { answer: result, unreviewed };
+}
+
+/**
+ * 機能ドキュメントだけを根拠に、質問に答える。
+ *
+ * 読み手は**このコードを書いていない人**（引き継いだ人・外から調べる人・サポートや QA）。
+ * 特定の職種向けの文面（顧客への返信など）は作らない。答えは誰が読んでも分かる言葉で1つだけ返す。
+ */
+export async function askQuestion(question: string, options: AskOptions): Promise<AskResult> {
   const all = options.docs ?? (await loadFromPath(options.docsPath));
 
   if (all.length === 0) {
     return {
-      answer: {
-        verdict: "unknown",
-        confidence: 0,
-        headline: "参照できる機能ドキュメントがありません。",
-        answerForCustomer: "",
-        explanation:
-          "機能ドキュメントが1件も見つかりませんでした。先に spec-bridge で既存コードから書き起こしてください。",
-        citations: [],
-        devRequest: null,
-        followUp: [],
-      },
+      answer: noAnswer("参照できる機能ドキュメントがありません。", [
+        "機能ドキュメントが1件も見つかりませんでした。先に spec-bridge で既存コードから書き起こしてください。",
+      ]),
+      unreviewed: [],
       docCount: 0,
       consultedCount: 0,
       narrowed: false,
@@ -158,20 +238,12 @@ export async function askSupportQuestion(
   // 索引の段階で「関係するものがない」と判断されたら、全文を読むまでもない
   if (docs.length === 0) {
     return {
-      answer: {
-        verdict: "unknown",
-        confidence: 0,
-        headline: "この問い合わせに関係する仕様ドキュメントが見つかりませんでした。",
-        answerForCustomer: "",
-        explanation:
-          `参照できる ${all.length} 件のドキュメントを確認しましたが、関係するものがありませんでした。` +
-          (selection.reason ? `\n\n${selection.reason}` : ""),
-        citations: [],
-        devRequest: null,
-        followUp: [
-          "この機能の仕様ドキュメントが存在するか、開発チームに確認してください。",
-        ],
-      },
+      answer: noAnswer("この質問に関係する機能ドキュメントが見つかりませんでした。", [
+        `参照できる ${all.length} 件のドキュメントを確認しましたが、関係するものがありませんでした。` +
+          (selection.reason ? `（${selection.reason}）` : ""),
+        "この機能のドキュメントがあるか、コードを書いた人に確かめてください。",
+      ]),
+      unreviewed: [],
       docCount: all.length,
       consultedCount: 0,
       narrowed: selection.narrowed,
@@ -180,13 +252,7 @@ export async function askSupportQuestion(
 
   const text = await runAgent({
     systemPrompt: SYSTEM,
-    prompt: [
-      `# 参照できる機能仕様ドキュメント`,
-      docContext(docs),
-      "",
-      `# 問い合わせ内容`,
-      question,
-    ].join("\n"),
+    prompt: [`# 参照できる機能仕様ドキュメント`, docContext(docs), "", `# 質問`, question].join("\n"),
     model: options.model ?? process.env.SPEC_BRIDGE_ASK_MODEL,
     allowedTools: [],
     // 与えられたドキュメントだけで答えさせる。ファイルもネットワークも触らせない。
@@ -199,27 +265,11 @@ export async function askSupportQuestion(
     throw new Error(`回答がスキーマに合致しません:\n${z.prettifyError(parsed.error)}`);
   }
 
-  // 出典なしで断定させない。ここは UI 側の実装に依存させたくないので、ロジック側で強制する。
-  const answer = parsed.data;
-  if (answer.citations.length === 0 && answer.verdict !== "unknown") {
-    return {
-      answer: {
-        ...answer,
-        verdict: "unknown",
-        answerForCustomer: "",
-        explanation:
-          `${answer.explanation}\n\n` +
-          `（※ 出典を示せない回答だったため、システム側で「判断できない」に変更しました。開発チームに確認してください）`,
-        confidence: 0,
-      },
-      docCount: all.length,
-      consultedCount: docs.length,
-      narrowed: selection.narrowed,
-    };
-  }
-
+  // 出典なしで断定させない。ここは画面側の実装に依存させたくないので、ロジック側で強制する
+  const { answer, unreviewed } = finalizeAnswer(parsed.data, docs);
   return {
     answer,
+    unreviewed,
     docCount: all.length,
     consultedCount: docs.length,
     narrowed: selection.narrowed,

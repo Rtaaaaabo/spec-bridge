@@ -30,7 +30,7 @@ CS が AI の回答を信じて顧客に誤答することが、このプロジ�
 
 - `SpecRule.sources` は `min(1)`。出典ゼロの仕様項目はスキーマ上存在できません
 - `mergeAnalysis()` が違反を書き出し前に落とします
-- `askSupportQuestion()` は、出典ゼロで `spec` / `bug` を返してきた回答を強制的に `unknown` に書き換えます
+- `askQuestion()`（`finalizeAnswer()`）は、出典ゼロで答えてきた回答を強制的に `unknown` に書き換え、答えの文面を捨てます
 
 この強制は **UI ではなくロジック側**に置いてください。画面の実装ミスで誤答が漏れる余地をなくすためです。
 

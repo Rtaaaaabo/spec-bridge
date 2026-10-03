@@ -134,7 +134,7 @@ export function renderIndexPage(docs: FeatureDoc[]): string {
     "",
     // バックフィルで作られたドキュメントは PR に紐づかないので「PR から」とは書けない
     "spec-bridge がソースコードから自動生成・更新しています。",
-    "`📝 AI生成` は未レビューです — 顧客への回答に使う前に開発者の確認を取ってください。",
+    "`📝 AI生成` は未レビューです — 説明や判断の根拠にする前に、開発者の確認を取ってください。",
     "",
     `コードを読んだうえで人に確かめるしかない点は [開発者への確認事項](${QUESTIONS_PAGE}) にまとめています` +
       `（聞くべきこと ${counts.intent} 件。ほかに追加調査 ${counts.unverified} 件・範囲のメモ ${counts.scope} 件）。`,
