@@ -102,7 +102,7 @@ gh repo create <your-org>/<your-product>-specs --private
 ```bash
 # webhook
 GITHUB_WEBHOOK_SECRET=<手順2で控えた secret>
-# 提出先の既定。インストールごとに画面から設定でき、設定が無いときだけこの値に落ちる
+# 提出先の既定。インストールごとの設定（テナント表）が無いときだけ、この値に落ちる
 SPEC_BRIDGE_DOCS_REPO=<your-org>/<your-product>-specs
 PORT=3939
 
@@ -169,38 +169,6 @@ pnpm check-auth --repo-name <解析対象の org/repo> --clone
 > ⚠️ 非公開リポジトリに権限が無い場合、GitHub は **404**（存在しない）を返します。
 > 「リポジトリが無い」と見分けがつかないので、404 が出たら
 > fine-grained PAT の対象リポジトリ、または App のインストール先を確認してください。
-
-## 3.5 画面のログインを設定する（任意）
-
-`apps/web`（CX サポートデスク / インストール一覧）には**ログインが必要**です。
-GitHub App の user-to-server OAuth を使うので、新しい App は要りません。
-
-1. App の設定画面（General）の **Identifying and authorizing users** で、**Redirect URI**（旧称 Callback URL）に次を登録する
-
-   ```
-   http://localhost:3000/api/github/callback
-   ```
-
-2. 同じ画面の **Client ID** を控え、**Generate a new client secret** で secret を作る
-3. `.env` に追記する
-
-   ```bash
-   SPEC_BRIDGE_SESSION_SECRET=$(openssl rand -hex 32 の結果)
-   GITHUB_APP_CLIENT_ID=<Client ID>
-   GITHUB_APP_CLIENT_SECRET=<client secret>
-   # ログインを許可する GitHub ユーザー（カンマ区切り）。未設定なら誰も通さない
-   SPEC_BRIDGE_ALLOWED_LOGINS=<あなたの GitHub ユーザー名>
-   # 公開 URL が localhost 以外なら（https なら Cookie に Secure が付く）
-   # SPEC_BRIDGE_BASE_URL=https://specs.example.com
-   ```
-
-4. `pnpm web` で起動し、http://localhost:3000/ を開く（未ログインなら `/login` に飛びます）
-
-> ⚠️ `SPEC_BRIDGE_SESSION_SECRET` か `SPEC_BRIDGE_ALLOWED_LOGINS` が未設定だと、
-> 画面は**誰も通しません**（素通しにはなりません）。
-> 署名を検証できない状態や、許可した人が誰もいない状態で通すほうが危ないためです。
-
-セッション Cookie に入るのは GitHub のユーザー識別子だけで、**アクセストークンは保存しません**。
 
 ## 4. ローカルで受け取れるようにする
 

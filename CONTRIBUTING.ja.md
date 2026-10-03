@@ -14,10 +14,9 @@ cp .env.example .env
 | コマンド | 内容 |
 | --- | --- |
 | `pnpm test` | テスト（LLM を呼ばないので高速・無料） |
-| `pnpm typecheck` | 型チェック（core / cli / web すべて） |
+| `pnpm typecheck` | 型チェック（packages / cli / webhook） |
 | `pnpm check-auth` | GitHub の認証設定を確認（LLM を呼ばないので無料） |
 | `pnpm analyze --pr <PR> --repo <path> --docs <path>` | PR を1件解析 |
-| `pnpm web` | CX サポートデスク画面 |
 | `pnpm webhook` / `pnpm worker` | webhook の受信 / 積まれたジョブの実行（`DATABASE_URL` が必要） |
 | `pnpm backfill-run --repo <org/repo>` | バックフィルを機能ごとのジョブとして積む |
 
@@ -83,18 +82,6 @@ Agent SDK の `allowedTools` は「自動承認リスト」であって**使え�
   解析対象リポジトリと docs リポジトリは別のインストール＝別のトークンになりうる
 - App の資格情報が半端（ID だけ・鍵だけ）なときは、PAT にフォールバックせず起動時に失敗させる。
   「App を設定したつもりで、実は PAT で動いていた」は運用側から気づけません
-
-### 6. 画面と API は `currentSession()` を通す
-
-`apps/web/proxy.ts`（Next 16 以前の middleware）は Cookie の**有無**しか見ていません（Edge ランタイムから署名鍵を読めないため）。
-**認証はサーバー側の `currentSession()`（`apps/web/lib/auth.ts`）です。**
-
-新しい画面やルートハンドラを足すときは、先頭でこれを呼んでください。
-呼び忘れた経路が1つあると、そこから機能ドキュメントが読めてしまいます。
-
-`currentSession()` は署名の検証だけでなく、**許可リスト（`SPEC_BRIDGE_ALLOWED_LOGINS`）も
-リクエストごとに見ます**。発行済みのセッションは12時間有効なので、リストから外した人が
-その間ずっと入れるのでは、外した意味がありません。
 
 ## テストの方針
 
