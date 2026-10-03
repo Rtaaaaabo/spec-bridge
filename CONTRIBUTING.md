@@ -35,7 +35,7 @@ to prevent.
 - `mergeAnalysis()` drops violations before anything is written.
 - `pruneInvalidSources()` removes citations pointing at files that don't exist, and drops any spec item
   left with none.
-- `askSupportQuestion()` rewrites a `spec` / `bug` verdict to `unknown` when the answer cites no sources.
+- `askQuestion()` (`finalizeAnswer()`) rewrites any answer that cites no sources to `unknown` and drops its text.
 
 **Enforce this in the logic layer, not in the UI.** A rendering mistake must never be able to leak a
 wrong answer.

@@ -17,8 +17,8 @@ There are plenty of tools that help *developers* understand a codebase. This one
 
 ## The UI lives in the hosted version (Askless)
 
-The screen that answers inquiries grounded only in the generated specs (verdict, customer-ready reply,
-citations down to `file:line`), and the screens for reviewing docs and managing backfills, are offered in
+The screen that answers questions grounded only in the generated specs (a plain answer, citations down to
+`file:line`, and what the docs can't tell you), and the screens for reviewing docs and managing backfills, are offered in
 the hosted version, **Askless**.
 
 This repository (OSS) covers everything **up to writing cited feature specs into your docs repository**.
@@ -409,7 +409,7 @@ packages/core/          the analysis pipeline
   markdown.ts           FeatureDoc ⇄ Markdown, deterministically
   store.ts              reads/writes the docs directory and its index page
   pipeline.ts           wires the above together
-  ask.ts                support Q&A: verdict, customer reply, citations
+  ask.ts                Q&A over the specs: answer, citations, unknowns; uncited claims dropped by the system
   select-docs.ts        narrows the corpus to the documents a question needs
   confidence.ts         source verification and machine-derived confidence
   pr-body.ts            builds the docs-repo pull request description

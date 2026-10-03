@@ -87,11 +87,12 @@ the App off the docs repository and run on a PAT.
 - If `GITHUB_WEBHOOK_SECRET` is unset, the webhook endpoint rejects **every** request rather than
   accepting unsigned ones.
 
-### Review before using generated documents with customers
+### Review before relying on generated documents
 
 Generated documents carry `status: draft` (AI-generated, unreviewed). **Have an engineer review them
-before support uses them to answer customers.** Answers to questions (`askSupportQuestion`) carry a warning
-whenever their sources are still `draft`.
+before anyone relies on them to explain or decide something.** Answers to questions (`askQuestion`) list
+every cited feature that is still unreviewed as `unreviewed` — derived from the citations and document
+status, not written by the model.
 
 ### Repositories you analyze are untrusted input
 
