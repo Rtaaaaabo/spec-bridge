@@ -191,6 +191,8 @@ The estimate is priced at API rates; if you authenticate with a Claude subscript
 
 Analyzing one pull request at a time means the day you adopt the tool, you have nothing.
 Backfill writes the initial set of feature documents from the code as it stands today.
+**Features that already have a document are left alone** — pull-request updates keep them current, and
+rewriting them would drop a human reviewer's sign-off. Running it again only adds what is missing.
 
 ```bash
 pnpm backfill --repo ~/dev/acme-backend --docs ~/dev/acme-specs --limit 12

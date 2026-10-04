@@ -44,6 +44,7 @@ function num(value: unknown): number | null {
  */
 export function summarizeRuns(jobs: Job[]): RunSummary[] {
   const runs = new Map<string, RunSummary>();
+  const nothingToWrite = new Set<string>();
 
   for (const job of jobs) {
     const runId = text(job.payload["runId"]);
@@ -82,6 +83,8 @@ export function summarizeRuns(jobs: Job[]): RunSummary[] {
       summary.surveyed = num(job.result?.["surveyed"]);
       // 列挙に失敗したランは、機能ジョブが1つも積まれない
       if (job.state === "failed") summary.state = "failed";
+      // 書く機能が無かった（全部すでにドキュメントがある）ランは、仕上げも PR も作らずに終わる
+      if (job.state === "succeeded" && summary.surveyed === 0) nothingToWrite.add(runId);
     } else if (job.kind === BACKFILL_FEATURE) {
       if (job.state === "succeeded") {
         summary.done += 1;
@@ -98,6 +101,10 @@ export function summarizeRuns(jobs: Job[]): RunSummary[] {
 
   for (const summary of runs.values()) {
     if (summary.state === "failed") continue;
+    if (nothingToWrite.has(summary.runId)) {
+      summary.state = "succeeded";
+      continue;
+    }
     // PR まで出ていれば終わり。予算で打ち切ったランは、そうと分かるようにする
     if (summary.prUrl) summary.state = summary.skipped > 0 ? "over-budget" : "succeeded";
     else summary.state = "running";

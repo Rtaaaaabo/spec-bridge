@@ -123,6 +123,7 @@ export async function surveyFeatures(
     "",
     `重要度の高いものから挙げてください。${limit} 件に収まらない場合、`,
     `利用者から見て影響の大きいもの（画面・権限・課金・通知）を優先します。`,
+    `**下の一覧にすでにある機能は書き直しません。** まだドキュメントの無い機能を優先して挙げてください。`,
     "",
     `# 既存の機能ドキュメント一覧`,
     indexText,
@@ -200,4 +201,28 @@ export function normalizeSurvey(
   }
 
   return { features: kept.slice(0, limit), warnings };
+}
+
+/**
+ * バックフィルで書く機能から、**すでに機能ドキュメントがあるもの**を外す。
+ *
+ * 既存のドキュメントは PR ごとの更新で保たれている。バックフィルで書き直すと、
+ * 内容がほぼ同じでも自動更新として扱われ、人がレビュー済にした印が外れる（実際に起きた）。
+ * 1機能 約 $1.7 の解析を、すでにある機能に使う理由もない。
+ *
+ * 列挙は既存の id を `docId` に入れる約束だが、`newDocId` に既存の id を書いてくることもあるので両方で見る。
+ */
+export function excludeDocumented(
+  features: SurveyedFeature[],
+  existingIds: Iterable<string>,
+): { features: SurveyedFeature[]; documented: SurveyedFeature[] } {
+  const existing = new Set(existingIds);
+  const documented: SurveyedFeature[] = [];
+  const rest: SurveyedFeature[] = [];
+  for (const feature of features) {
+    const id = feature.docId ?? feature.newDocId;
+    if (feature.docId !== null || (id !== null && existing.has(id))) documented.push(feature);
+    else rest.push(feature);
+  }
+  return { features: rest, documented };
 }

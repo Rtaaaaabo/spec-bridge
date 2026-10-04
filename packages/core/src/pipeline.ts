@@ -10,7 +10,7 @@ import {
 import type { ConfidenceBreakdown } from "./confidence.ts";
 import { mergeAnalysis, type MergeWarning } from "./merge.ts";
 import { DocStore } from "./store.ts";
-import { surveyFeatures, type SurveyedFeature } from "./survey.ts";
+import { excludeDocumented, surveyFeatures, type SurveyedFeature } from "./survey.ts";
 import {
   backfillSource,
   isValidDocId,
@@ -287,7 +287,10 @@ export interface BackfillResult {
  * 20件目の失敗で19件分の解析が捨てられる。
  */
 export interface BackfillSurvey {
+  /** これから書く機能。すでにドキュメントがあるものは含まない */
   features: SurveyedFeature[];
+  /** 列挙されたが、すでにドキュメントがあるので書かない機能の ID */
+  alreadyDocumented: string[];
   warnings: string[];
   usage: UsageSummary;
 }
@@ -319,7 +322,24 @@ export async function surveyForBackfill(options: BackfillOptions): Promise<Backf
   log(`  ${survey.features.length} 件の機能を検出`);
   for (const warning of survey.warnings) log(`  ⚠ ${warning}`);
 
-  return { features: survey.features, warnings: survey.warnings, usage: tally.summary() };
+  // すでにドキュメントがある機能は書き直さない（レビュー済の印が外れ、費用も無駄になる）
+  const { features, documented } = excludeDocumented(
+    survey.features,
+    index.map((entry) => entry.id),
+  );
+  if (documented.length > 0) {
+    log(
+      `  すでにドキュメントがある ${documented.length} 件はそのままにします: ` +
+        documented.map((f) => f.docId ?? f.newDocId).join(", "),
+    );
+  }
+
+  return {
+    features,
+    alreadyDocumented: documented.map((f) => f.docId ?? f.newDocId ?? f.title),
+    warnings: survey.warnings,
+    usage: tally.summary(),
+  };
 }
 
 /**
