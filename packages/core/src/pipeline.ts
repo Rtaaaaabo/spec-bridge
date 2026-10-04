@@ -322,16 +322,18 @@ export async function surveyForBackfill(options: BackfillOptions): Promise<Backf
   log(`  ${survey.features.length} 件の機能を検出`);
   for (const warning of survey.warnings) log(`  ⚠ ${warning}`);
 
-  // すでにドキュメントがある機能は書き直さない（レビュー済の印が外れ、費用も無駄になる）
-  const { features, documented } = excludeDocumented(
-    survey.features,
-    index.map((entry) => entry.id),
-  );
+  // このリポジトリの分がすでに書かれている機能は書き直さない（レビュー済の印が外れ、費用も無駄になる）。
+  // 別のリポジトリから見た同じ機能は、既存の機能に追記する
+  const { features, documented } = excludeDocumented(survey.features, index, options.repo);
   if (documented.length > 0) {
     log(
-      `  すでにドキュメントがある ${documented.length} 件はそのままにします: ` +
+      `  ${options.repo} の分がすでに書かれている ${documented.length} 件はそのままにします: ` +
         documented.map((f) => f.docId ?? f.newDocId).join(", "),
     );
+  }
+  const appended = features.filter((f) => f.docId !== null);
+  if (appended.length > 0) {
+    log(`  既存の ${appended.length} 件に ${options.repo} から見た情報を足します: ${appended.map((f) => f.docId).join(", ")}`);
   }
 
   return {

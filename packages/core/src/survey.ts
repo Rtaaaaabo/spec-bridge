@@ -114,7 +114,9 @@ export async function surveyFeatures(
   const indexText =
     existingDocs.length === 0
       ? "(まだ機能ドキュメントは1件もありません)"
-      : existingDocs.map((d) => `- ${d.id}: ${d.title} — ${d.summary}`).join("\n");
+      : existingDocs
+          .map((d) => `- ${d.id}: ${d.title} — ${d.summary}（書き起こし済みのリポジトリ: ${d.repos.join(", ") || "不明"}）`)
+          .join("\n");
 
   const prompt = [
     `# タスク`,
@@ -123,7 +125,9 @@ export async function surveyFeatures(
     "",
     `重要度の高いものから挙げてください。${limit} 件に収まらない場合、`,
     `利用者から見て影響の大きいもの（画面・権限・課金・通知）を優先します。`,
-    `**下の一覧にすでにある機能は書き直しません。** まだドキュメントの無い機能を優先して挙げてください。`,
+    `**下の一覧のうち、${repo} がすでに書き起こし済みの機能は書き直しません。** まだドキュメントの無い機能を優先してください。`,
+    `一覧にあっても ${repo} がまだ入っていない機能（別のリポジトリだけから書かれた機能）は、`,
+    `このリポジトリに関係する部分（画面など）があれば既存の id を docId に入れて挙げてください。${repo} から見た情報が追記されます。`,
     "",
     `# 既存の機能ドキュメント一覧`,
     indexText,
@@ -204,25 +208,40 @@ export function normalizeSurvey(
 }
 
 /**
- * バックフィルで書く機能から、**すでに機能ドキュメントがあるもの**を外す。
+ * バックフィルで書く機能から、**このリポジトリの分がすでに書かれている機能**を外す。
  *
- * 既存のドキュメントは PR ごとの更新で保たれている。バックフィルで書き直すと、
+ * 既存のドキュメントは PR ごとの更新で保たれている。同じリポジトリで書き直すと、
  * 内容がほぼ同じでも自動更新として扱われ、人がレビュー済にした印が外れる（実際に起きた）。
  * 1機能 約 $1.7 の解析を、すでにある機能に使う理由もない。
  *
+ * ただし**別のリポジトリ**から見た同じ機能は外さない。サーバー側だけを書き起こした機能に、
+ * 画面のリポジトリから画面の情報を足すのはこの経路しかない。既存の id に寄せて（`docId`）追記させる。
+ * 追記すれば内容が変わるので、レビュー済だった機能は未確認に戻る（それは正しい）。
+ *
  * 列挙は既存の id を `docId` に入れる約束だが、`newDocId` に既存の id を書いてくることもあるので両方で見る。
+ * 一覧に無い `docId` を指してきたものは、存在しない機能を作らないよう外す。
  */
 export function excludeDocumented(
   features: SurveyedFeature[],
-  existingIds: Iterable<string>,
+  existingDocs: Iterable<{ id: string; repos: string[] }>,
+  repo: string,
 ): { features: SurveyedFeature[]; documented: SurveyedFeature[] } {
-  const existing = new Set(existingIds);
+  const existing = new Map([...existingDocs].map((doc) => [doc.id, doc.repos.map((r) => r.toLowerCase())]));
+  const target = repo.toLowerCase();
   const documented: SurveyedFeature[] = [];
   const rest: SurveyedFeature[] = [];
   for (const feature of features) {
     const id = feature.docId ?? feature.newDocId;
-    if (feature.docId !== null || (id !== null && existing.has(id))) documented.push(feature);
-    else rest.push(feature);
+    const repos = id !== null ? existing.get(id) : undefined;
+    if (repos === undefined) {
+      if (feature.docId !== null) documented.push(feature);
+      else rest.push(feature);
+    } else if (repos.includes(target)) {
+      documented.push(feature);
+    } else {
+      // 既存の機能に、このリポジトリから見た情報を足す
+      rest.push({ ...feature, docId: id, newDocId: null });
+    }
   }
   return { features: rest, documented };
 }
