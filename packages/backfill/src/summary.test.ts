@@ -54,6 +54,21 @@ test("PR が出るまでは実行中とみなす", () => {
   assert.equal(runs[0]?.pending, 1);
 });
 
+// 全部すでにドキュメントがあるときは、仕上げも PR も作らずに終わる。ずっと「実行中」に見せない
+test("書く機能が無かったランは、PR が無くても終わったとみなす", () => {
+  const runs = summarizeRuns([
+    job({ kind: "backfill.survey", result: { surveyed: 0, alreadyDocumented: ["invite"] } }),
+  ]);
+  assert.equal(runs[0]?.state, "succeeded");
+  assert.equal(runs[0]?.prUrl, null);
+  assert.equal(progressLabel(runs[0]!), "対象なし");
+});
+
+test("列挙がまだ終わっていなければ、0件でも実行中のまま", () => {
+  const runs = summarizeRuns([job({ kind: "backfill.survey", state: "running", result: null })]);
+  assert.equal(runs[0]?.state, "running");
+});
+
 // 予算で打ち切ったランを「全部書けた」と見せない
 test("予算超過で打ち切ったランはそうと分かる", () => {
   const runs = summarizeRuns([

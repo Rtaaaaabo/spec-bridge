@@ -67,6 +67,21 @@ export function surveyHandler(deps: BackfillHandlerDeps): JobHandler {
       });
 
       const sha = checkout.sha;
+      const result = {
+        surveyed: survey.features.length,
+        alreadyDocumented: survey.alreadyDocumented,
+        costUsd: survey.usage.costUsd,
+        agentRuns: survey.usage.agentRuns,
+        warnings: survey.warnings,
+      };
+
+      // 書く機能が無い（全部すでにドキュメントがある）なら、仕上げも PR も作らずに終える。
+      // 仕上げを積むと「ブランチにドキュメントがない」で失敗する
+      if (survey.features.length === 0) {
+        ctx.log("  新しく書く機能はありません（すでに全部ドキュメントがあります）");
+        return result;
+      }
+
       for (const [index, feature] of survey.features.entries()) {
         await deps.store.enqueue(
           featureJob(run, feature, { index: index + 1, total: survey.features.length }, sha),
@@ -76,12 +91,7 @@ export function surveyHandler(deps: BackfillHandlerDeps): JobHandler {
       await deps.store.enqueue(finishJob(run, { surveyed: survey.features.length, sha }));
 
       ctx.log(`  ${survey.features.length} 件の機能ジョブを積みました`);
-      return {
-        surveyed: survey.features.length,
-        costUsd: survey.usage.costUsd,
-        agentRuns: survey.usage.agentRuns,
-        warnings: survey.warnings,
-      };
+      return result;
     } finally {
       await checkout.cleanup();
       await rm(docsDir, { recursive: true, force: true });
