@@ -1,17 +1,20 @@
 # spec-bridge
 
-**Turn merged pull requests into feature specs your support and QA teams can actually use — with mandatory source citations.**
+**Turn merged pull requests into feature specs with mandatory source citations, written and kept up to date automatically.**
 
 日本語版: [README.ja.md](README.ja.md)
 
-AI has made teams ship faster than their support and QA functions can keep up with. The gap shows up as
-a steady stream of "is this a bug or is it supposed to work that way?" questions aimed at engineers.
+AI has made building faster, but the back-and-forth needed to confirm what was actually built has not shrunk.
+People explain because they built something, and explain again because they want something built — and that
+back-and-forth is now what slows development down.
 
-There are plenty of tools that help *developers* understand a codebase. This one is different:
-**the reader is not an engineer.**
+spec-bridge moves it out of conversation and into documents generated from the work itself.
+The reader is anyone who did not write the code.
 
-- **Support** can tell whether a customer report is expected behavior or a real bug, without asking engineering.
-- **QA** learns what to test and what this change might have broken.
+- **PMs, support and QA** can see how something works, and whether a behavior is a bug or intended, without asking engineering.
+- **Whoever asked for the work** can compare what they asked for with the spec generated from the pull request.
+- **People are asked only what the code cannot settle.** Instead of guessing, those points come back separately
+  as questions for the developers.
 - **It refuses to answer without evidence.** Claims that can't cite a source never make it into the docs,
   and answers that can't cite a source are forced to "can't determine" by the system — not by the prompt.
 
@@ -32,7 +35,7 @@ too: if the model asserts something without citing a source, the system — not 
 ### 1. Documents are per-feature, not per-pull-request
 
 A pull request is a *change*, not a *specification*. A hundred records of "changed payment retry count from 3 to 5"
-still won't tell support how payments work.
+still won't tell someone who didn't write the code how payments work.
 
 So **one feature is one durable document, and each PR is applied to it as a patch.** A useful side effect:
 you get a timeline of when each rule changed, which is what you need to answer "the customer saw this on March 12."
@@ -276,11 +279,11 @@ confidence: 0.9
 
 # Payment retry
 
-## Overview / User-visible behavior   ← for support; no jargon
+## Overview / User-visible behavior   ← for people who don't read code; no jargon
 ## Screens / Endpoints                ← extracted from routing definitions
-## Permissions and roles              ← the most common source of inquiries
+## Permissions and roles              ← where gaps and mismatches hurt most
 ## Specification details              ← citations required
-## Test points (happy/error/regression/E2E)  ← for QA
+## Test points (happy/error/regression/E2E)  ← what to check
 ## Questions for engineering          ← what couldn't be determined from code
 ## Change history
 ## Sources                            ← file:line + PR number
